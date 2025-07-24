@@ -275,9 +275,18 @@ export default function ShoppingListPage() {
   }
 
   const unassignedItems = currentList.isSplitMode && currentList.groups 
-    ? currentList.items.filter(item => 
-        !currentList.groups?.some(group => group.items.some(groupItem => groupItem.id === item.id))
-      )
+    ? currentList.items.filter(item => {
+        // Check if this original item is fully represented in groups
+        const totalInGroups = currentList.groups?.reduce((total, group) => {
+          const matchingItems = group.items.filter(groupItem => 
+            groupItem.id.startsWith(item.id + '-') || groupItem.id === item.id
+          );
+          return total + matchingItems.reduce((sum, matchingItem) => sum + matchingItem.quantity, 0);
+        }, 0) || 0;
+        
+        // Item is unassigned if its total quantity is not fully represented in groups
+        return totalInGroups < item.quantity;
+      })
     : currentList.items;
 
   return (
@@ -407,19 +416,45 @@ export default function ShoppingListPage() {
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <h3 className="font-medium text-gray-900 mb-2">Unassigned Items</h3>
                 <div className="space-y-2">
-                  {unassignedItems.map((item) => (
-                    <div
-                      key={item.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, item)}
-                      className="bg-white border border-yellow-300 rounded p-2 cursor-move hover:bg-yellow-50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-gray-900">{item.name}</span>
-                        <span className="text-secondary font-medium">€{item.total.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  ))}
+                  {unassignedItems.map((item) => {
+                    // Calculate how many units are already assigned to groups
+                    const assignedQuantity = currentList.groups?.reduce((total, group) => {
+                      const matchingItems = group.items.filter(groupItem => 
+                        groupItem.id.startsWith(item.id + '-') || groupItem.id === item.id
+                      );
+                      return total + matchingItems.reduce((sum, matchingItem) => sum + matchingItem.quantity, 0);
+                    }, 0) || 0;
+                    
+                    const remainingQuantity = item.quantity - assignedQuantity;
+                    const unitPrice = item.price;
+                    
+                    // Create individual draggable units for remaining quantity
+                    return Array.from({ length: remainingQuantity }, (_, index) => {
+                      const unitItem: ShoppingItem = {
+                        ...item,
+                        id: `${item.id}-unassigned-${index}`,
+                        quantity: 1,
+                        total: unitPrice,
+                        originalQuantity: item.quantity
+                      };
+                      
+                      return (
+                        <div
+                          key={`${item.id}-unassigned-${index}`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, unitItem)}
+                          className="bg-white border border-yellow-300 rounded p-2 cursor-move hover:bg-yellow-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-gray-900">
+                              {item.name} (1/{item.quantity})
+                            </span>
+                            <span className="text-secondary font-medium">€{unitPrice.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  }).flat()}
                 </div>
               </div>
             )}
