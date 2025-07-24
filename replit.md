@@ -20,6 +20,9 @@ Currency preference: Euro (€) instead of USD ($)
 ✓ Created mobile-friendly quantity input component with +/- buttons for easier touch interaction
 ✓ Improved form layouts with larger touch targets and better spacing for mobile devices
 ✓ Enhanced add item form with stacked layout and clearer quantity controls
+✓ Fixed drag and drop functionality between groups with proper event handling and total recalculation
+✓ Updated default split amount from €50 to €25 for more practical group sizes
+✓ Resolved quantity input visibility issues on desktop browsers by hiding browser spinners
 
 ## System Architecture
 
