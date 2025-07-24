@@ -9,6 +9,7 @@ interface GroupContainerProps {
   onDrop: (groupId: string, item: ShoppingItem) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: (e: React.DragEvent) => void;
+  onDragStart: (e: React.DragEvent, item: ShoppingItem) => void;
   isDragOver: boolean;
 }
 
@@ -18,6 +19,7 @@ export function GroupContainer({
   onDrop,
   onDragOver,
   onDragLeave,
+  onDragStart,
   isDragOver
 }: GroupContainerProps) {
   const handleDrop = (e: React.DragEvent) => {
@@ -67,7 +69,12 @@ export function GroupContainer({
         onDragLeave={onDragLeave}
       >
         {group.items.map((item) => (
-          <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-2 cursor-move hover:bg-gray-100 transition-colors">
+          <div 
+            key={item.id} 
+            draggable
+            onDragStart={(e) => onDragStart(e, item)}
+            className="bg-gray-50 border border-gray-200 rounded-lg p-2 cursor-move hover:bg-gray-100 transition-colors"
+          >
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-gray-900">{item.name} {item.originalQuantity && item.originalQuantity > 1 ? `(${item.quantity}/${item.originalQuantity})` : ''}</span>
               <span className="text-secondary font-medium">€{item.total.toFixed(2)}</span>

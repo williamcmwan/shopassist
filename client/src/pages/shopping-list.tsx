@@ -411,6 +411,7 @@ export default function ShoppingListPage() {
                 onDrop={handleDropOnGroup}
                 onDragOver={() => handleGroupDragOver(group.id)}
                 onDragLeave={handleDragLeave}
+                onDragStart={handleDragStart}
                 isDragOver={dragOverGroup === group.id}
               />
             ))}
