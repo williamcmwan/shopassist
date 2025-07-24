@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShoppingItemComponent } from "@/components/shopping-item";
 import { GroupContainer } from "@/components/group-container";
+import { QuantityInput } from "@/components/quantity-input";
 import { ArrowLeft, Plus, Edit2, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -319,36 +320,38 @@ export default function ShoppingListPage() {
 
       {/* Add Item Form */}
       <div className="add-item-form bg-white border-b border-gray-200 p-4">
-        <div className="grid grid-cols-12 gap-2">
+        <div className="space-y-3">
           <Input
             type="text"
             value={newItem.name}
             onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
             placeholder="Item name"
-            className="col-span-6 px-3 py-2 text-sm"
+            className="w-full px-4 py-3 text-base"
           />
-          <Input
-            type="number"
-            value={newItem.price || ""}
-            onChange={(e) => setNewItem(prev => ({ ...prev, price: Number(e.target.value) }))}
-            placeholder="€0.00"
-            step="0.01"
-            className="col-span-3 px-3 py-2 text-sm"
-          />
-          <Input
-            type="number"
-            value={newItem.quantity}
-            onChange={(e) => setNewItem(prev => ({ ...prev, quantity: Number(e.target.value) }))}
-            placeholder="Qty"
-            min="1"
-            className="col-span-2 px-3 py-2 text-sm"
-          />
-          <Button 
-            onClick={handleAddItem}
-            className="col-span-1 bg-primary text-white hover:bg-blue-800 flex items-center justify-center"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              value={newItem.price || ""}
+              onChange={(e) => setNewItem(prev => ({ ...prev, price: Number(e.target.value) }))}
+              placeholder="€0.00"
+              step="0.01"
+              className="flex-1 px-4 py-3 text-base"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 font-medium">Qty:</span>
+              <QuantityInput
+                value={newItem.quantity}
+                onChange={(value) => setNewItem(prev => ({ ...prev, quantity: value }))}
+                className="w-28"
+              />
+            </div>
+            <Button 
+              onClick={handleAddItem}
+              className="bg-primary text-white hover:bg-blue-800 px-4 py-3 flex items-center justify-center min-w-[44px]"
+            >
+              <Plus className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -472,38 +475,42 @@ export default function ShoppingListPage() {
                   <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-3 mb-2 shadow-sm">
                     <div className="space-y-2">
                       <div className="font-medium text-gray-900">{item.name}</div>
-                      <div className="flex items-center space-x-2">
+                      <div className="space-y-2">
                         <Input
                           type="number"
                           value={editForm.price}
                           onChange={(e) => setEditForm(prev => ({ ...prev, price: Number(e.target.value) }))}
                           placeholder="€0.00"
                           step="0.01"
-                          className="flex-1 px-2 py-1 text-sm"
+                          className="w-full px-3 py-2 text-base"
                         />
-                        <Input
-                          type="number"
-                          value={editForm.quantity}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, quantity: Number(e.target.value) }))}
-                          placeholder="Qty"
-                          min="1"
-                          className="w-16 px-2 py-1 text-sm"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveEdit(item.id)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-2 py-1"
-                        >
-                          <Check className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleCancelEdit}
-                          className="text-gray-600 hover:bg-gray-100 px-2 py-1"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-600 font-medium">Qty:</span>
+                            <QuantityInput
+                              value={editForm.quantity}
+                              onChange={(value) => setEditForm(prev => ({ ...prev, quantity: value }))}
+                              className="w-28"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveEdit(item.id)}
+                              className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 min-w-[44px]"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={handleCancelEdit}
+                              className="text-gray-600 hover:bg-gray-100 px-3 py-2 min-w-[44px]"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

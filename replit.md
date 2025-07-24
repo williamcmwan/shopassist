@@ -16,6 +16,10 @@ Currency preference: Euro (€) instead of USD ($)
 ✓ Enhanced bin-packing algorithm to split items with multiple quantities across different groups
 ✓ Improved drag and drop functionality with proper total recalculation
 ✓ Added visual indicators for split items showing quantity distribution (e.g., "2/3")
+✓ Fixed unassigned items logic to properly handle split items with new ID patterns
+✓ Created mobile-friendly quantity input component with +/- buttons for easier touch interaction
+✓ Improved form layouts with larger touch targets and better spacing for mobile devices
+✓ Enhanced add item form with stacked layout and clearer quantity controls
 
 ## System Architecture
 
