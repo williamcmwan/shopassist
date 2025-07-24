@@ -10,20 +10,35 @@ export class BinPackingAlgorithm {
   /**
    * First Fit Decreasing algorithm for bin packing
    * Sorts items in descending order by value and places each item in the first bin that has enough space
+   * Can split items with multiple quantities across different groups
    */
   static firstFitDecreasing(
     items: ShoppingItem[],
     targetAmount: number,
     numberOfGroups: number
   ): ShoppingGroup[] {
+    // Create individual units from items with quantities > 1
+    const individualItems: BinPackingItem[] = [];
+    
+    items.forEach(item => {
+      const unitPrice = item.price;
+      for (let i = 0; i < item.quantity; i++) {
+        individualItems.push({
+          id: `${item.id}-${i}`,
+          value: unitPrice,
+          item: {
+            ...item,
+            id: `${item.id}-${i}`,
+            quantity: 1,
+            total: unitPrice,
+            originalQuantity: item.quantity
+          }
+        });
+      }
+    });
+
     // Sort items by total value in descending order
-    const sortedItems: BinPackingItem[] = items
-      .map(item => ({
-        id: item.id,
-        value: item.total,
-        item: { ...item }
-      }))
-      .sort((a, b) => b.value - a.value);
+    const sortedItems = individualItems.sort((a, b) => b.value - a.value);
 
     // Initialize groups
     const groups: ShoppingGroup[] = [];
@@ -67,20 +82,35 @@ export class BinPackingAlgorithm {
   /**
    * Best Fit algorithm for bin packing
    * Places each item in the bin with the least remaining space that can still fit the item
+   * Can split items with multiple quantities across different groups
    */
   static bestFit(
     items: ShoppingItem[],
     targetAmount: number,
     numberOfGroups: number
   ): ShoppingGroup[] {
+    // Create individual units from items with quantities > 1
+    const individualItems: BinPackingItem[] = [];
+    
+    items.forEach(item => {
+      const unitPrice = item.price;
+      for (let i = 0; i < item.quantity; i++) {
+        individualItems.push({
+          id: `${item.id}-${i}`,
+          value: unitPrice,
+          item: {
+            ...item,
+            id: `${item.id}-${i}`,
+            quantity: 1,
+            total: unitPrice,
+            originalQuantity: item.quantity
+          }
+        });
+      }
+    });
+
     // Sort items by total value in descending order
-    const sortedItems: BinPackingItem[] = items
-      .map(item => ({
-        id: item.id,
-        value: item.total,
-        item: { ...item }
-      }))
-      .sort((a, b) => b.value - a.value);
+    const sortedItems = individualItems.sort((a, b) => b.value - a.value);
 
     // Initialize groups
     const groups: ShoppingGroup[] = [];

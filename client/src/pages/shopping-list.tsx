@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShoppingItemComponent } from "@/components/shopping-item";
 import { GroupContainer } from "@/components/group-container";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Edit2, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ShoppingListPage() {
@@ -24,6 +24,8 @@ export default function ShoppingListPage() {
   const [targetAmount, setTargetAmount] = useState<number>(50);
   const [numberOfGroups, setNumberOfGroups] = useState<number>(2);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ price: number; quantity: number }>({ price: 0, quantity: 1 });
 
   useEffect(() => {
     if (params?.id) {
@@ -200,6 +202,64 @@ export default function ShoppingListPage() {
     setDragOverGroup(null);
   };
 
+  const handleEditItem = (item: ShoppingItem) => {
+    setEditingItem(item.id);
+    setEditForm({ price: item.price, quantity: item.quantity });
+  };
+
+  const handleSaveEdit = (itemId: string) => {
+    if (!currentList) return;
+
+    const updatedItems = currentList.items.map(item => {
+      if (item.id === itemId) {
+        const newTotal = Number((editForm.price * editForm.quantity).toFixed(2));
+        return {
+          ...item,
+          price: editForm.price,
+          quantity: editForm.quantity,
+          total: newTotal
+        };
+      }
+      return item;
+    });
+
+    // Also update item in groups if it exists
+    const updatedGroups = currentList.groups?.map(group => ({
+      ...group,
+      items: group.items.map(item => {
+        if (item.id === itemId) {
+          const newTotal = Number((editForm.price * editForm.quantity).toFixed(2));
+          return {
+            ...item,
+            price: editForm.price,
+            quantity: editForm.quantity,
+            total: newTotal
+          };
+        }
+        return item;
+      }),
+      total: Number(group.items.map(item => {
+        if (item.id === itemId) {
+          return Number((editForm.price * editForm.quantity).toFixed(2));
+        }
+        return item.total;
+      }).reduce((sum, total) => sum + total, 0).toFixed(2))
+    }));
+
+    const updatedList = {
+      ...currentList,
+      items: updatedItems,
+      groups: updatedGroups
+    };
+
+    updateList(updatedList);
+    setEditingItem(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingItem(null);
+  };
+
   const scrollToAddForm = () => {
     document.querySelector('.add-item-form')?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -242,7 +302,7 @@ export default function ShoppingListPage() {
             </div>
           </div>
           <div className="text-right">
-            <p className="text-lg font-bold text-secondary">${currentList.total.toFixed(2)}</p>
+            <p className="text-lg font-bold text-secondary">€{currentList.total.toFixed(2)}</p>
             <p className="text-xs text-gray-500">{currentList.items.length} items</p>
           </div>
         </div>
@@ -262,7 +322,7 @@ export default function ShoppingListPage() {
             type="number"
             value={newItem.price || ""}
             onChange={(e) => setNewItem(prev => ({ ...prev, price: Number(e.target.value) }))}
-            placeholder="$0.00"
+            placeholder="€0.00"
             step="0.01"
             className="col-span-3 px-3 py-2 text-sm"
           />
@@ -356,7 +416,7 @@ export default function ShoppingListPage() {
                     >
                       <div className="flex items-center justify-between text-sm">
                         <span className="font-medium text-gray-900">{item.name}</span>
-                        <span className="text-secondary font-medium">${item.total.toFixed(2)}</span>
+                        <span className="text-secondary font-medium">€{item.total.toFixed(2)}</span>
                       </div>
                     </div>
                   ))}
@@ -373,11 +433,77 @@ export default function ShoppingListPage() {
               </div>
             ) : (
               currentList.items.map((item) => (
-                <ShoppingItemComponent
-                  key={item.id}
-                  item={item}
-                  onRemove={handleRemoveItem}
-                />
+                editingItem === item.id ? (
+                  <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-3 mb-2 shadow-sm">
+                    <div className="space-y-2">
+                      <div className="font-medium text-gray-900">{item.name}</div>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          type="number"
+                          value={editForm.price}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, price: Number(e.target.value) }))}
+                          placeholder="€0.00"
+                          step="0.01"
+                          className="flex-1 px-2 py-1 text-sm"
+                        />
+                        <Input
+                          type="number"
+                          value={editForm.quantity}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                          placeholder="Qty"
+                          min="1"
+                          className="w-16 px-2 py-1 text-sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveEdit(item.id)}
+                          className="bg-green-600 hover:bg-green-700 text-white px-2 py-1"
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleCancelEdit}
+                          className="text-gray-600 hover:bg-gray-100 px-2 py-1"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div key={item.id} className="bg-white border border-gray-200 rounded-lg p-3 mb-2 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-gray-900">{item.name}</h4>
+                        <div className="flex items-center space-x-3 mt-1">
+                          <span className="text-sm text-gray-600">€{item.price.toFixed(2)}</span>
+                          <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
+                          <span className="text-sm font-medium text-secondary">€{item.total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditItem(item)}
+                          className="text-primary hover:bg-blue-50 p-1"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-destructive hover:bg-red-50 p-1"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )
               ))
             )}
           </div>

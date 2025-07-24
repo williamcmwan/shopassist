@@ -72,7 +72,7 @@ export default function MainPage() {
                       <h3 className="font-medium text-gray-900">{list.name}</h3>
                       <div className="flex items-center space-x-4 mt-1">
                         <p className="text-sm text-gray-600">{new Date(list.date).toLocaleDateString()}</p>
-                        <p className="text-sm font-medium text-secondary">${list.total.toFixed(2)}</p>
+                        <p className="text-sm font-medium text-secondary">€{list.total.toFixed(2)}</p>
                         <p className="text-xs text-gray-500">{list.items.length} items</p>
                       </div>
                     </div>

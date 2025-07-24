@@ -30,9 +30,9 @@ export function ShoppingItemComponent({
         <div className="flex-1">
           <h4 className="font-medium text-gray-900">{item.name}</h4>
           <div className="flex items-center space-x-3 mt-1">
-            <span className="text-sm text-gray-600">${item.price.toFixed(2)}</span>
+            <span className="text-sm text-gray-600">€{item.price.toFixed(2)}</span>
             <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
-            <span className="text-sm font-medium text-secondary">${item.total.toFixed(2)}</span>
+            <span className="text-sm font-medium text-secondary">€{item.total.toFixed(2)}</span>
           </div>
         </div>
         <div className="flex items-center space-x-2">

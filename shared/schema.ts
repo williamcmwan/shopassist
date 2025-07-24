@@ -7,6 +7,7 @@ export const shoppingItemSchema = z.object({
   quantity: z.number().min(1, "Quantity must be at least 1"),
   total: z.number(),
   groupId: z.string().optional(),
+  originalQuantity: z.number().optional(), // Store original quantity for splitting
 });
 
 export const shoppingGroupSchema = z.object({

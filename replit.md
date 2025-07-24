@@ -7,6 +7,15 @@ This is a React-based shopping list application built with TypeScript that helps
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Currency preference: Euro (€) instead of USD ($)
+
+## Recent Changes (January 2025)
+
+✓ Changed currency from USD ($) to Euro (€) across all components
+✓ Added item editing functionality - users can now update price and quantity of existing items
+✓ Enhanced bin-packing algorithm to split items with multiple quantities across different groups
+✓ Improved drag and drop functionality with proper total recalculation
+✓ Added visual indicators for split items showing quantity distribution (e.g., "2/3")
 
 ## System Architecture
 
