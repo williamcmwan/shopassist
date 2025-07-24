@@ -22,7 +22,7 @@ export default function ShoppingListPage() {
     price: 0,
     quantity: 1
   });
-  const [targetAmount, setTargetAmount] = useState<number>(50);
+  const [targetAmount, setTargetAmount] = useState<number>(25);
   const [numberOfGroups, setNumberOfGroups] = useState<number>(2);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
@@ -409,7 +409,10 @@ export default function ShoppingListPage() {
                 group={group}
                 onItemRemove={handleRemoveItem}
                 onDrop={handleDropOnGroup}
-                onDragOver={() => handleGroupDragOver(group.id)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  handleGroupDragOver(group.id);
+                }}
                 onDragLeave={handleDragLeave}
                 onDragStart={handleDragStart}
                 isDragOver={dragOverGroup === group.id}

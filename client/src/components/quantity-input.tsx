@@ -54,7 +54,8 @@ export function QuantityInput({
         onChange={handleInputChange}
         min={min}
         max={max}
-        className="flex-1 text-center border-0 border-l border-r border-gray-300 rounded-none h-10 px-2 text-base font-medium focus:ring-0 focus:border-primary"
+        className="flex-1 text-center border-0 border-l border-r border-gray-300 rounded-none h-10 px-2 text-base font-medium focus:ring-0 focus:border-primary appearance-none"
+        style={{ MozAppearance: 'textfield' }}
       />
       
       <Button
