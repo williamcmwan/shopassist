@@ -561,7 +561,7 @@ export default function ShoppingListPage() {
       {/* Split Configuration Panel */}
       {showSplitPanel && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 max-w-md mx-auto">
-          <div className="bg-white w-full max-w-md rounded-t-lg p-6 max-h-[50vh] overflow-y-auto">
+          <div className="bg-white w-full max-w-md rounded-t-lg p-6 max-h-[50vh] overflow-y-auto border-t-2 border-l-2 border-r-2 border-gray-200 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Configure Split</h3>
               <Button 
