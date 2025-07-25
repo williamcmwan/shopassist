@@ -31,7 +31,8 @@ export class BinPackingAlgorithm {
             id: `${item.id}-${i}`,
             quantity: 1,
             total: unitPrice,
-            originalQuantity: item.quantity
+            originalQuantity: item.quantity,
+            splitIndex: i + 1 // Add 1-based index for display
           }
         });
       }
@@ -103,7 +104,8 @@ export class BinPackingAlgorithm {
             id: `${item.id}-${i}`,
             quantity: 1,
             total: unitPrice,
-            originalQuantity: item.quantity
+            originalQuantity: item.quantity,
+            splitIndex: i + 1 // Add 1-based index for display
           }
         });
       }

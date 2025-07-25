@@ -8,6 +8,7 @@ export const shoppingItemSchema = z.object({
   total: z.number(),
   groupId: z.string().optional(),
   originalQuantity: z.number().optional(), // Store original quantity for splitting
+  splitIndex: z.number().optional(), // For tracking which part of split item (1-based)
 });
 
 export const shoppingGroupSchema = z.object({

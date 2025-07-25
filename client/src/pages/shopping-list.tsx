@@ -417,14 +417,16 @@ export default function ShoppingListPage() {
                     const remainingQuantity = item.quantity - assignedQuantity;
                     const unitPrice = item.price;
                     
-                    // Create individual draggable units for remaining quantity
+                    // Create individual draggable units for remaining quantity with proper numbering
                     return Array.from({ length: remainingQuantity }, (_, index) => {
+                      const actualIndex = assignedQuantity + index + 1; // Start from where we left off
                       const unitItem: ShoppingItem = {
                         ...item,
                         id: `${item.id}-unassigned-${index}`,
                         quantity: 1,
                         total: unitPrice,
-                        originalQuantity: item.quantity
+                        originalQuantity: item.quantity,
+                        splitIndex: actualIndex
                       };
                       
                       return (
@@ -436,7 +438,7 @@ export default function ShoppingListPage() {
                         >
                           <div className="flex items-center justify-between text-sm">
                             <span className="font-medium text-gray-900">
-                              {item.name} (1/{item.quantity})
+                              {item.name} ({actualIndex}/{item.quantity})
                             </span>
                             <span className="text-secondary font-medium">€{unitPrice.toFixed(2)}</span>
                           </div>

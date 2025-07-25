@@ -142,7 +142,9 @@ export function GroupContainer({
             className="bg-gray-50 border border-gray-200 rounded-lg p-2 cursor-move hover:bg-gray-100 transition-colors"
           >
             <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-gray-900">{item.name} {item.originalQuantity && item.originalQuantity > 1 ? `(${item.quantity}/${item.originalQuantity})` : ''}</span>
+              <span className="font-medium text-gray-900">
+                {item.name} {item.originalQuantity && item.originalQuantity > 1 && item.splitIndex ? `(${item.splitIndex}/${item.originalQuantity})` : ''}
+              </span>
               <span className="text-secondary font-medium">€{item.total.toFixed(2)}</span>
             </div>
           </div>
