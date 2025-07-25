@@ -27,6 +27,8 @@ export default function ShoppingListPage() {
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ price: number; quantity: number }>({ price: 0, quantity: 1 });
+  const [showSplitPanel, setShowSplitPanel] = useState<boolean>(false);
+  const [editingGroupTarget, setEditingGroupTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (params?.id) {
@@ -142,11 +144,30 @@ export default function ShoppingListPage() {
     };
 
     updateList(updatedList);
+    setShowSplitPanel(false);
     
     toast({
       title: "List split successfully",
       description: `Items have been distributed into ${numberOfGroups} groups.`
     });
+  };
+
+  const handleUpdateGroupTarget = (groupId: string, newTarget: number) => {
+    if (!currentList || !currentList.groups) return;
+
+    const updatedGroups = currentList.groups.map(group => 
+      group.id === groupId 
+        ? { ...group, targetAmount: newTarget }
+        : group
+    );
+
+    const updatedList = {
+      ...currentList,
+      groups: updatedGroups
+    };
+
+    updateList(updatedList);
+    setEditingGroupTarget(null);
   };
 
   const handleDragStart = (e: React.DragEvent, item: ShoppingItem) => {
@@ -355,49 +376,7 @@ export default function ShoppingListPage() {
         </div>
       </div>
 
-      {/* Split Controls */}
-      <div className="bg-gray-50 p-4 border-b border-gray-200">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-gray-900">Split List</h3>
-          <Button 
-            variant="ghost"
-            onClick={handleToggleSplitMode}
-            className="text-primary hover:bg-blue-50 px-3 py-1 text-sm font-medium"
-          >
-            {currentList.isSplitMode ? 'Exit Split' : 'Split Items'}
-          </Button>
-        </div>
-        
-        {currentList.isSplitMode && (
-          <div className="space-y-3">
-            <div className="flex space-x-2">
-              <Input
-                type="number"
-                value={targetAmount}
-                onChange={(e) => setTargetAmount(Number(e.target.value))}
-                placeholder="Target amount per group"
-                step="0.01"
-                className="flex-1 px-3 py-2 text-sm"
-              />
-              <Input
-                type="number"
-                value={numberOfGroups}
-                onChange={(e) => setNumberOfGroups(Number(e.target.value))}
-                placeholder="Groups"
-                min="2"
-                max="5"
-                className="w-20 px-3 py-2 text-sm"
-              />
-              <Button 
-                onClick={handleRunBinPacking}
-                className="bg-accent text-white px-4 py-2 hover:bg-orange-600 text-sm font-medium"
-              >
-                Split
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
+
 
       {/* Items List / Groups */}
       <div className="flex-1 overflow-y-auto">
@@ -415,6 +394,9 @@ export default function ShoppingListPage() {
                 }}
                 onDragLeave={handleDragLeave}
                 onDragStart={handleDragStart}
+                onUpdateTarget={handleUpdateGroupTarget}
+                editingGroupTarget={editingGroupTarget}
+                setEditingGroupTarget={setEditingGroupTarget}
                 isDragOver={dragOverGroup === group.id}
               />
             ))}
@@ -556,11 +538,96 @@ export default function ShoppingListPage() {
         )}
       </div>
 
+      {/* Bottom Split Panel */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 max-w-md mx-auto">
+        {!currentList.isSplitMode ? (
+          <Button 
+            onClick={() => setShowSplitPanel(true)}
+            className="w-full bg-accent text-white hover:bg-orange-600 py-3 text-base font-medium"
+          >
+            Split List
+          </Button>
+        ) : (
+          <Button 
+            onClick={handleToggleSplitMode}
+            variant="outline"
+            className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 py-3 text-base font-medium"
+          >
+            Exit Split Mode
+          </Button>
+        )}
+      </div>
+
+      {/* Split Configuration Panel */}
+      {showSplitPanel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 max-w-md mx-auto">
+          <div className="bg-white w-full max-w-md rounded-t-lg p-6 max-h-[50vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Configure Split</h3>
+              <Button 
+                variant="ghost"
+                onClick={() => setShowSplitPanel(false)}
+                className="p-2 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Amount per Group (€)
+                </label>
+                <Input
+                  type="number"
+                  value={targetAmount}
+                  onChange={(e) => setTargetAmount(Number(e.target.value))}
+                  placeholder="25.00"
+                  step="0.01"
+                  className="w-full px-4 py-3 text-base"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Number of Groups
+                </label>
+                <Input
+                  type="number"
+                  value={numberOfGroups}
+                  onChange={(e) => setNumberOfGroups(Number(e.target.value))}
+                  placeholder="2"
+                  min="2"
+                  max="5"
+                  className="w-full px-4 py-3 text-base"
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowSplitPanel(false)}
+                  className="flex-1 py-3 text-base"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleRunBinPacking}
+                  className="flex-1 bg-accent text-white hover:bg-orange-600 py-3 text-base font-medium"
+                >
+                  Split Items
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Action Button */}
       {currentList.isSplitMode && (
         <Button
           onClick={scrollToAddForm}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-accent text-white rounded-full shadow-lg hover:bg-orange-600 hover:scale-110 transition-all duration-200"
+          className="fixed bottom-20 right-6 w-14 h-14 bg-accent text-white rounded-full shadow-lg hover:bg-orange-600 hover:scale-110 transition-all duration-200"
           style={{ zIndex: 20 }}
         >
           <Plus className="h-5 w-5" />

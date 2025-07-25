@@ -1,7 +1,10 @@
 import { ShoppingGroup, ShoppingItem } from "@shared/schema";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ShoppingItemComponent } from "./shopping-item";
 import { cn } from "@/lib/utils";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Edit2, Check, X } from "lucide-react";
+import { useState } from "react";
 
 interface GroupContainerProps {
   group: ShoppingGroup;
@@ -10,6 +13,9 @@ interface GroupContainerProps {
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: (e: React.DragEvent) => void;
   onDragStart: (e: React.DragEvent, item: ShoppingItem) => void;
+  onUpdateTarget: (groupId: string, newTarget: number) => void;
+  editingGroupTarget: string | null;
+  setEditingGroupTarget: (groupId: string | null) => void;
   isDragOver: boolean;
 }
 
@@ -20,8 +26,13 @@ export function GroupContainer({
   onDragOver,
   onDragLeave,
   onDragStart,
+  onUpdateTarget,
+  editingGroupTarget,
+  setEditingGroupTarget,
   isDragOver
 }: GroupContainerProps) {
+  const [editTargetValue, setEditTargetValue] = useState(group.targetAmount);
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const itemId = e.dataTransfer.getData("text/plain");
@@ -37,6 +48,17 @@ export function GroupContainer({
     }
   };
 
+  const handleSaveTarget = () => {
+    if (editTargetValue > 0) {
+      onUpdateTarget(group.id, editTargetValue);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditTargetValue(group.targetAmount);
+    setEditingGroupTarget(null);
+  };
+
   const excess = group.total - group.targetAmount;
   const isOverTarget = excess > 0;
 
@@ -46,16 +68,57 @@ export function GroupContainer({
         <h3 className="font-semibold text-gray-900">Group {group.number}</h3>
         <div className="text-right">
           <p className="text-lg font-bold text-secondary">€{group.total.toFixed(2)}</p>
-          <p className="text-xs text-gray-500">
-            Target: €{group.targetAmount.toFixed(2)} 
-            {isOverTarget ? (
-              <span className="text-orange-600"> (+€{excess.toFixed(2)})</span>
-            ) : excess < 0 ? (
-              <span className="text-gray-600"> (€{excess.toFixed(2)})</span>
-            ) : (
-              <span className="text-green-600"> (Perfect!)</span>
-            )}
-          </p>
+          {editingGroupTarget === group.id ? (
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-xs text-gray-600">Target:</span>
+              <Input
+                type="number"
+                value={editTargetValue}
+                onChange={(e) => setEditTargetValue(Number(e.target.value))}
+                step="0.01"
+                className="w-16 h-6 px-2 py-1 text-xs"
+              />
+              <Button
+                size="sm"
+                onClick={handleSaveTarget}
+                className="h-6 w-6 p-0 bg-green-600 hover:bg-green-700"
+              >
+                <Check className="h-3 w-3" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleCancelEdit}
+                className="h-6 w-6 p-0 hover:bg-gray-100"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <p className="text-xs text-gray-500">
+                Target: €{group.targetAmount.toFixed(2)} 
+                {isOverTarget ? (
+                  <span className="text-orange-600"> (+€{excess.toFixed(2)})</span>
+                ) : excess < 0 ? (
+                  <span className="text-gray-600"> (€{excess.toFixed(2)})</span>
+                ) : (
+                  <span className="text-green-600"> (Perfect!)</span>
+                )}
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setEditingGroupTarget(group.id);
+                  setEditTargetValue(group.targetAmount);
+                }}
+                className="h-5 w-5 p-0 hover:bg-gray-100"
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
       
