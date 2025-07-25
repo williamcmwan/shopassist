@@ -23,6 +23,9 @@ Currency preference: Euro (€) instead of USD ($)
 ✓ Fixed drag and drop functionality between groups with proper event handling and total recalculation
 ✓ Updated default split amount from €50 to €25 for more practical group sizes
 ✓ Resolved quantity input visibility issues on desktop browsers by hiding browser spinners
+✓ Moved split controls to bottom panel with modal configuration interface
+✓ Added ability to edit individual group target amounts after splitting
+✓ Fixed content padding to prevent bottom panel from blocking list items
 
 ## System Architecture
 

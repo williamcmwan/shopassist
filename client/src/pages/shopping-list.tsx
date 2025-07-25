@@ -379,9 +379,9 @@ export default function ShoppingListPage() {
 
 
       {/* Items List / Groups */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-24">
         {currentList.isSplitMode ? (
-          <div className="p-4 space-y-4">
+          <div className="p-4 space-y-4 pb-8">
             {currentList.groups?.map((group) => (
               <GroupContainer
                 key={group.id}
@@ -449,7 +449,7 @@ export default function ShoppingListPage() {
             )}
           </div>
         ) : (
-          <div className="p-4">
+          <div className="p-4 pb-8">
             {currentList.items.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <p>No items in this list yet</p>
@@ -627,7 +627,7 @@ export default function ShoppingListPage() {
       {currentList.isSplitMode && (
         <Button
           onClick={scrollToAddForm}
-          className="fixed bottom-20 right-6 w-14 h-14 bg-accent text-white rounded-full shadow-lg hover:bg-orange-600 hover:scale-110 transition-all duration-200"
+          className="fixed bottom-24 right-6 w-14 h-14 bg-accent text-white rounded-full shadow-lg hover:bg-orange-600 hover:scale-110 transition-all duration-200"
           style={{ zIndex: 20 }}
         >
           <Plus className="h-5 w-5" />
