@@ -45,17 +45,26 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
 
   const startCamera = useCallback(async () => {
     try {
-      // iOS Safari requires more specific constraints
-      const constraints = {
+      // Check if we're on iOS
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      
+      // iOS Safari requires very basic constraints
+      const constraints = isIOS ? {
         video: {
-          facingMode: "environment", // Use back camera
+          facingMode: "environment"
+        },
+        audio: false
+      } : {
+        video: {
+          facingMode: "environment",
           width: { ideal: 1920, min: 640 },
-          height: { ideal: 1080, min: 480 },
-          aspectRatio: { ideal: 4/3 }
+          height: { ideal: 1080, min: 480 }
         },
         audio: false
       };
 
+      console.log("Requesting camera with constraints:", constraints);
+      
       // Try to get camera access
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
@@ -64,22 +73,32 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
         videoRef.current.srcObject = stream;
         // Wait for video to be ready
         videoRef.current.onloadedmetadata = () => {
+          console.log("Video metadata loaded, starting capture");
           setIsCapturing(true);
+        };
+        
+        // Also handle play event for iOS
+        videoRef.current.onplay = () => {
+          console.log("Video started playing");
+        };
+        
+        videoRef.current.onerror = (e) => {
+          console.error("Video error:", e);
         };
       }
     } catch (error) {
       console.error("Camera error:", error);
       
-      // Try fallback constraints for iOS
+      // For iOS, try even simpler constraints
       try {
-        const fallbackConstraints = {
-          video: {
-            facingMode: "environment"
-          },
+        const simpleConstraints = {
+          video: true,
           audio: false
         };
         
-        const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        console.log("Trying simple constraints:", simpleConstraints);
+        
+        const stream = await navigator.mediaDevices.getUserMedia(simpleConstraints);
         streamRef.current = stream;
         
         if (videoRef.current) {
@@ -142,6 +161,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   const processImage = useCallback(async (imageData: string) => {
     setIsProcessing(true);
     try {
+      // Try multiple OCR configurations for better accuracy
       const result = await Tesseract.recognize(imageData, "eng", {
         logger: m => console.log(m)
       });
@@ -150,8 +170,12 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
       console.log("OCR Result:", text);
       console.log("OCR Raw Text:", JSON.stringify(text, null, 2));
       
+      // Clean and preprocess the text
+      const cleanedText = preprocessText(text);
+      console.log("Cleaned Text:", cleanedText);
+      
       // Extract product name and price from OCR text
-      const extracted = extractProductInfo(text);
+      const extracted = extractProductInfo(cleanedText);
       setExtractedData(extracted);
       setEditedData(extracted);
       setIsEditing(true);
@@ -172,6 +196,25 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     }
   }, [toast]);
 
+  const preprocessText = (text: string): string => {
+    // Clean up common OCR errors
+    let cleaned = text
+      // Fix common OCR misreadings
+      .replace(/[|]/g, 'I') // Fix vertical bars as I
+      .replace(/[0O]/g, 'O') // Fix 0 as O in certain contexts
+      .replace(/[1l]/g, 'l') // Fix 1 as l in certain contexts
+      .replace(/[5S]/g, 'S') // Fix 5 as S in certain contexts
+      .replace(/[8B]/g, 'B') // Fix 8 as B in certain contexts
+      // Fix price-related OCR errors
+      .replace(/€\s*([0-9]+)[.,]\s*([0-9]{2})/g, '€$1.$2') // Fix price format
+      .replace(/ONLY\s*€/g, 'ONLY €') // Fix ONLY price format
+      // Remove extra whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    return cleaned;
+  };
+
   const extractProductInfo = (text: string): { productName: string; price: number } => {
     // Split text into lines and clean up
     const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
@@ -181,18 +224,18 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     let productName = "";
     let price = 0;
     
-    // Look for price patterns - multiple patterns to catch different formats
+    // Enhanced price detection patterns
     const pricePatterns = [
-      /€\s*(\d+[.,]\d{2})/g,  // €XX.XX or €XX,XX
-      /ONLY\s*€\s*(\d+[.,]\d{2})/g,  // ONLY €XX.XX
-      /€\s*(\d+[.,]\d{2})/g   // General €XX.XX
+      /ONLY\s*€\s*(\d+[.,]\d{2})/g,  // ONLY €XX.XX (highest priority)
+      /€\s*(\d+[.,]\d{2})/g,         // €XX.XX or €XX,XX
+      /(\d+[.,]\d{2})\s*€/g          // XX.XX€ (reverse format)
     ];
     
-    let allPriceMatches: Array<{price: number, line: string, index: number}> = [];
+    let allPriceMatches: Array<{price: number, line: string, index: number, pattern: string}> = [];
     
     // Collect all price matches with their context
     lines.forEach((line, index) => {
-      pricePatterns.forEach(pattern => {
+      pricePatterns.forEach((pattern, patternIndex) => {
         const matches = Array.from(line.matchAll(pattern));
         matches.forEach(match => {
           const priceStr = match[1].replace(',', '.');
@@ -200,7 +243,8 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
           allPriceMatches.push({
             price: priceValue,
             line: line,
-            index: index
+            index: index,
+            pattern: patternIndex === 0 ? 'ONLY' : patternIndex === 1 ? 'EURO' : 'REVERSE'
           });
         });
       });
@@ -208,20 +252,27 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     
     console.log("All price matches:", allPriceMatches); // Debug log
     
-    // Prioritize "ONLY" prices as they're usually the current price
-    const onlyPrice = allPriceMatches.find(match => match.line.toLowerCase().includes('only'));
-    if (onlyPrice) {
-      price = onlyPrice.price;
-    } else if (allPriceMatches.length > 0) {
-      // Take the first price if no "ONLY" found
-      price = allPriceMatches[0].price;
+    // Smart price selection
+    if (allPriceMatches.length > 0) {
+      // Prioritize "ONLY" prices as they're usually the current price
+      const onlyPrice = allPriceMatches.find(match => match.pattern === 'ONLY');
+      if (onlyPrice) {
+        price = onlyPrice.price;
+        console.log("Selected ONLY price:", onlyPrice);
+      } else {
+        // Take the first price if no "ONLY" found
+        price = allPriceMatches[0].price;
+        console.log("Selected first price:", allPriceMatches[0]);
+      }
     }
     
-    // Look for product name - improved logic
+    // Enhanced product name detection
+    const productCandidates: Array<{name: string, score: number, line: string}> = [];
+    
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      // Skip lines that are clearly prices, quantities, or other non-product text
+      // Skip lines that are clearly not product names
       if (pricePatterns.some(pattern => pattern.test(line)) || 
           /^\d+[xX]\d+/.test(line) || 
           /^\d+ml$/.test(line) ||
@@ -230,47 +281,55 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
           /^deposit$/i.test(line) ||
           /^total price$/i.test(line) ||
           /^per litre$/i.test(line) ||
-          /^€\d+[.,]\d+ per litre$/i.test(line)) {
+          /^€\d+[.,]\d+ per litre$/i.test(line) ||
+          /^\d+[.,]\d+$/.test(line) || // Just numbers
+          /^€\d+[.,]\d+$/.test(line)) { // Just prices
         continue;
       }
       
-      // Look for lines that might be product names
+      // Score potential product names
       if (line.length > 3 && line.length < 50 && !/^\d+/.test(line)) {
-        // Check for specific product indicators
-        if (line.toLowerCase().includes('cola') || 
-            line.toLowerCase().includes('coca') ||
-            line.toLowerCase().includes('original')) {
-          productName = line;
-          break;
-        }
+        let score = 0;
         
-        // Look for lines that contain multiple words (likely product names)
+        // Specific product indicators (high score)
+        if (line.toLowerCase().includes('cola')) score += 10;
+        if (line.toLowerCase().includes('coca')) score += 10;
+        if (line.toLowerCase().includes('original')) score += 5;
+        
+        // Good product name characteristics
         const words = line.split(' ').filter(word => word.length > 0);
-        if (words.length >= 2 && words.length <= 4) {
-          // Check if this looks like a product name (not all caps, not all numbers)
-          const hasLetters = /[a-zA-Z]/.test(line);
-          const notAllCaps = line !== line.toUpperCase();
-          const notAllNumbers = !/^\d+$/.test(line);
-          
-          if (hasLetters && notAllCaps && notAllNumbers) {
-            productName = line;
-            break;
-          }
-        }
+        if (words.length >= 2 && words.length <= 4) score += 3;
         
-        // Fallback: take the first reasonable line that's not a price
-        if (!productName && line.length > 3 && !pricePatterns.some(pattern => pattern.test(line))) {
-          productName = line;
+        // Has letters but not all caps
+        const hasLetters = /[a-zA-Z]/.test(line);
+        const notAllCaps = line !== line.toUpperCase();
+        const notAllNumbers = !/^\d+$/.test(line);
+        
+        if (hasLetters && notAllCaps && notAllNumbers) score += 2;
+        
+        // Bonus for mixed case (like "Coca Cola")
+        if (/[a-z]/.test(line) && /[A-Z]/.test(line)) score += 1;
+        
+        // Penalty for all caps
+        if (line === line.toUpperCase() && line.length > 5) score -= 2;
+        
+        if (score > 0) {
+          productCandidates.push({ name: line, score, line: line });
         }
       }
     }
     
-    // If no product name found, use a default
-    if (!productName) {
+    // Sort candidates by score and select the best one
+    productCandidates.sort((a, b) => b.score - a.score);
+    console.log("Product candidates:", productCandidates);
+    
+    if (productCandidates.length > 0) {
+      productName = productCandidates[0].name;
+    } else {
       productName = "Product";
     }
     
-    console.log("Extracted:", { productName, price }); // Debug log
+    console.log("Final extracted:", { productName, price }); // Debug log
     return { productName, price };
   };
 
