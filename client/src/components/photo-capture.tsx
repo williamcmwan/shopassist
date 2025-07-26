@@ -95,6 +95,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
       
       const text = result.data.text;
       console.log("OCR Result:", text);
+      console.log("OCR Raw Text:", JSON.stringify(text, null, 2));
       
       // Extract product name and price from OCR text
       const extracted = extractProductInfo(text);
@@ -122,32 +123,67 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     // Split text into lines and clean up
     const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     
+    console.log("OCR Lines:", lines); // Debug log
+    
     let productName = "";
     let price = 0;
     
-    // Look for price patterns (€XX.XX or €XX,XX)
-    const pricePattern = /€\s*(\d+[.,]\d{2})/g;
-    const priceMatches = Array.from(text.matchAll(pricePattern));
+    // Look for price patterns - multiple patterns to catch different formats
+    const pricePatterns = [
+      /€\s*(\d+[.,]\d{2})/g,  // €XX.XX or €XX,XX
+      /ONLY\s*€\s*(\d+[.,]\d{2})/g,  // ONLY €XX.XX
+      /€\s*(\d+[.,]\d{2})/g   // General €XX.XX
+    ];
     
-    if (priceMatches.length > 0) {
-      // Take the first price match (usually the current price)
-      const priceStr = priceMatches[0][1].replace(',', '.');
-      price = parseFloat(priceStr);
+    let allPriceMatches: Array<{price: number, line: string, index: number}> = [];
+    
+    // Collect all price matches with their context
+    lines.forEach((line, index) => {
+      pricePatterns.forEach(pattern => {
+        const matches = Array.from(line.matchAll(pattern));
+        matches.forEach(match => {
+          const priceStr = match[1].replace(',', '.');
+          const priceValue = parseFloat(priceStr);
+          allPriceMatches.push({
+            price: priceValue,
+            line: line,
+            index: index
+          });
+        });
+      });
+    });
+    
+    console.log("All price matches:", allPriceMatches); // Debug log
+    
+    // Prioritize "ONLY" prices as they're usually the current price
+    const onlyPrice = allPriceMatches.find(match => match.line.toLowerCase().includes('only'));
+    if (onlyPrice) {
+      price = onlyPrice.price;
+    } else if (allPriceMatches.length > 0) {
+      // Take the first price if no "ONLY" found
+      price = allPriceMatches[0].price;
     }
     
-    // Look for product name patterns
-    // Common patterns: "Product Name" followed by quantity or price
+    // Look for product name - improved logic
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      // Skip lines that are clearly prices or quantities
-      if (pricePattern.test(line) || /^\d+[xX]\d+/.test(line) || /^\d+ml$/.test(line)) {
+      // Skip lines that are clearly prices, quantities, or other non-product text
+      if (pricePatterns.some(pattern => pattern.test(line)) || 
+          /^\d+[xX]\d+/.test(line) || 
+          /^\d+ml$/.test(line) ||
+          /^only$/i.test(line) ||
+          /^save$/i.test(line) ||
+          /^deposit$/i.test(line) ||
+          /^total price$/i.test(line) ||
+          /^per litre$/i.test(line) ||
+          /^€\d+[.,]\d+ per litre$/i.test(line)) {
         continue;
       }
       
       // Look for lines that might be product names
       if (line.length > 3 && line.length < 50 && !/^\d+/.test(line)) {
-        // Check if this line contains common product indicators
+        // Check for specific product indicators
         if (line.toLowerCase().includes('cola') || 
             line.toLowerCase().includes('coca') ||
             line.toLowerCase().includes('original')) {
@@ -155,8 +191,22 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
           break;
         }
         
-        // If no specific product found, take the first reasonable line
-        if (!productName && line.length > 3) {
+        // Look for lines that contain multiple words (likely product names)
+        const words = line.split(' ').filter(word => word.length > 0);
+        if (words.length >= 2 && words.length <= 4) {
+          // Check if this looks like a product name (not all caps, not all numbers)
+          const hasLetters = /[a-zA-Z]/.test(line);
+          const notAllCaps = line !== line.toUpperCase();
+          const notAllNumbers = !/^\d+$/.test(line);
+          
+          if (hasLetters && notAllCaps && notAllNumbers) {
+            productName = line;
+            break;
+          }
+        }
+        
+        // Fallback: take the first reasonable line that's not a price
+        if (!productName && line.length > 3 && !pricePatterns.some(pattern => pattern.test(line))) {
           productName = line;
         }
       }
@@ -167,6 +217,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
       productName = "Product";
     }
     
+    console.log("Extracted:", { productName, price }); // Debug log
     return { productName, price };
   };
 
