@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Camera, Upload, X, RotateCcw } from "lucide-react";
@@ -20,6 +20,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState({ productName: "", price: 0 });
+  const [cameraSupported, setCameraSupported] = useState<boolean | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -27,22 +28,74 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   const streamRef = useRef<MediaStream | null>(null);
   const { toast } = useToast();
 
+  // Check camera support on mount
+  useEffect(() => {
+    const checkCameraSupport = async () => {
+      try {
+        const hasGetUserMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        setCameraSupported(hasGetUserMedia);
+      } catch (error) {
+        console.error("Camera support check failed:", error);
+        setCameraSupported(false);
+      }
+    };
+    
+    checkCameraSupport();
+  }, []);
+
   const startCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" } // Use back camera on mobile
-      });
+      // iOS Safari requires more specific constraints
+      const constraints = {
+        video: {
+          facingMode: "environment", // Use back camera
+          width: { ideal: 1920, min: 640 },
+          height: { ideal: 1080, min: 480 },
+          aspectRatio: { ideal: 4/3 }
+        },
+        audio: false
+      };
+
+      // Try to get camera access
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Wait for video to be ready
+        videoRef.current.onloadedmetadata = () => {
+          setIsCapturing(true);
+        };
       }
-      setIsCapturing(true);
     } catch (error) {
-      toast({
-        title: "Camera access denied",
-        description: "Please allow camera access to capture photos.",
-        variant: "destructive"
-      });
+      console.error("Camera error:", error);
+      
+      // Try fallback constraints for iOS
+      try {
+        const fallbackConstraints = {
+          video: {
+            facingMode: "environment"
+          },
+          audio: false
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        streamRef.current = stream;
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            setIsCapturing(true);
+          };
+        }
+      } catch (fallbackError) {
+        console.error("Fallback camera error:", fallbackError);
+        toast({
+          title: "Camera access denied",
+          description: "Please allow camera access in your browser settings and try again.",
+          variant: "destructive"
+        });
+      }
     }
   }, [toast]);
 
@@ -264,7 +317,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
                 <Button 
                   onClick={startCamera}
                   className="flex-1"
-                  disabled={isProcessing}
+                  disabled={isProcessing || cameraSupported === false}
                 >
                   <Camera className="h-4 w-4 mr-2" />
                   Take Photo
@@ -278,6 +331,14 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
                   <Upload className="h-4 w-4 mr-2" />
                   Upload
                 </Button>
+              </div>
+              
+              <div className="text-xs text-gray-500 text-center">
+                <p>💡 Tip: If camera doesn't work, try uploading a photo instead</p>
+                <p>Make sure to allow camera access when prompted</p>
+                {cameraSupported === false && (
+                  <p className="text-red-500 mt-2">⚠️ Camera not supported in this browser</p>
+                )}
               </div>
               
               <input
@@ -297,7 +358,13 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
                   ref={videoRef}
                   autoPlay
                   playsInline
+                  muted
                   className="w-full rounded-lg"
+                  style={{ 
+                    transform: 'scaleX(-1)', // Mirror the video for better UX
+                    maxHeight: '400px',
+                    objectFit: 'cover'
+                  }}
                 />
                 <div className="absolute inset-0 border-2 border-blue-500 border-dashed rounded-lg pointer-events-none" />
               </div>
