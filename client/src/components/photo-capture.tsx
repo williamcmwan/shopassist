@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Camera, Upload, X, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import OCRSpace from "ocr-space-api";
 
 interface PhotoCaptureProps {
   onExtractData: (productName: string, price: number) => void;
@@ -55,22 +56,72 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   const processImage = useCallback(async (imageData: string) => {
     setIsProcessing(true);
     try {
-      // For now, we'll skip OCR and go directly to manual entry
-      // This provides a better user experience while we work on OCR
-      console.log("Image captured, showing manual entry");
+      console.log("Processing image with OCR Space API...");
       
-      // Set default values for manual entry
-      setEditedData({ productName: "", price: 0 });
-      setShowManualEntry(true);
+      // Convert base64 image to blob for OCR Space API
+      const base64Data = imageData.split(',')[1]; // Remove data:image/jpeg;base64, prefix
       
-      toast({
-        title: "Image captured",
-        description: "Please enter the product details manually.",
+      // Use OCR Space API for text extraction
+      // Get your free API key from: https://ocr.space/ocrapi
+      const result = await OCRSpace(base64Data, {
+        apikey: 'K81634588988957', // Replace with your OCR Space API key
+        language: 'eng',
+        isOverlayRequired: false,
+        filetype: 'jpg',
+        detectOrientation: true,
+        scale: true,
+        OCREngine: 2 // Use advanced OCR engine
       });
+      
+      console.log("OCR Space API result:", result);
+      
+      if (result.IsErroredOnProcessing) {
+        console.error("OCR Space API error:", result.ErrorMessage);
+        throw new Error(result.ErrorMessage || "OCR processing failed");
+      }
+      
+      const extractedText = result.ParsedResults?.[0]?.ParsedText || "";
+      console.log("Extracted text:", extractedText);
+      
+      if (extractedText.trim()) {
+        // Parse the extracted text
+        const extracted = parseProductInfo(extractedText);
+        console.log("Parsed product info:", extracted);
+        
+        if (extracted.productName || extracted.price > 0) {
+          setExtractedData(extracted);
+          setEditedData(extracted);
+          setIsEditing(true);
+          
+          toast({
+            title: "Product information detected",
+            description: "Please review and edit the extracted information.",
+          });
+        } else {
+          // Fallback to manual entry if no useful data found
+          setEditedData({ productName: "", price: 0 });
+          setShowManualEntry(true);
+          
+          toast({
+            title: "No product information detected",
+            description: "Please enter the product details manually.",
+          });
+        }
+      } else {
+        // No text extracted
+        setEditedData({ productName: "", price: 0 });
+        setShowManualEntry(true);
+        
+        toast({
+          title: "No text detected",
+          description: "Please enter the product details manually.",
+        });
+      }
+      
     } catch (error) {
-      console.error("Image processing error:", error);
+      console.error("OCR processing error:", error);
       toast({
-        title: "Image processing failed",
+        title: "OCR processing failed",
         description: "Please try again or enter details manually.",
         variant: "destructive"
       });
@@ -79,6 +130,176 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
       setIsProcessing(false);
     }
   }, [toast]);
+
+
+
+  // Parse product information from extracted text
+  const parseProductInfo = (text: string): { productName: string; price: number } => {
+    // Clean and preprocess the text
+    const cleanedText = preprocessText(text);
+    console.log("Cleaned text:", cleanedText);
+    
+    // Split text into lines and clean up
+    const lines = cleanedText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    
+    console.log("OCR Lines:", lines);
+    
+    let productName = "";
+    let price = 0;
+    
+    // Enhanced price detection patterns
+    const pricePatterns = [
+      /ONLY\s*€\s*(\d+[.,]\d{2})/g,  // ONLY €XX.XX (highest priority)
+      /€\s*(\d+[.,]\d{2})/g,         // €XX.XX or €XX,XX
+      /(\d+[.,]\d{2})\s*€/g,         // XX.XX€ (reverse format)
+      /ONLY\s*(\d+[.,]\d{2})/g,      // ONLY XX.XX (without € symbol)
+      /(\d+[.,]\d{2})/g              // Any XX.XX format as fallback
+    ];
+    
+    let allPriceMatches: Array<{price: number, line: string, index: number, pattern: string}> = [];
+    
+    // Collect all price matches with their context
+    lines.forEach((line, index) => {
+      pricePatterns.forEach((pattern, patternIndex) => {
+        const matches = Array.from(line.matchAll(pattern));
+        matches.forEach(match => {
+          const priceStr = match[1].replace(',', '.');
+          const priceValue = parseFloat(priceStr);
+          
+          // Only add reasonable prices (between 0.01 and 1000)
+          if (priceValue > 0.01 && priceValue < 1000) {
+            allPriceMatches.push({
+              price: priceValue,
+              line: line,
+              index: index,
+              pattern: patternIndex === 0 ? 'ONLY_EURO' : 
+                      patternIndex === 1 ? 'EURO' : 
+                      patternIndex === 2 ? 'REVERSE' :
+                      patternIndex === 3 ? 'ONLY' : 'GENERAL'
+            });
+          }
+        });
+      });
+    });
+    
+    console.log("All price matches:", allPriceMatches);
+    
+    // Smart price selection with better logic
+    if (allPriceMatches.length > 0) {
+      // Prioritize "ONLY" prices as they're usually the current price
+      const onlyPrice = allPriceMatches.find(match => 
+        match.pattern === 'ONLY_EURO' || match.pattern === 'ONLY'
+      );
+      
+      if (onlyPrice) {
+        price = onlyPrice.price;
+        console.log("Selected ONLY price:", onlyPrice);
+      } else {
+        // Look for the most likely current price (usually the largest reasonable price)
+        const sortedPrices = allPriceMatches
+          .filter(match => match.price > 1) // Filter out very small prices
+          .sort((a, b) => b.price - a.price);
+        
+        if (sortedPrices.length > 0) {
+          price = sortedPrices[0].price;
+          console.log("Selected highest price:", sortedPrices[0]);
+        } else {
+          price = allPriceMatches[0].price;
+          console.log("Selected first price:", allPriceMatches[0]);
+        }
+      }
+    }
+    
+    // Enhanced product name detection with better logic
+    const productCandidates: Array<{name: string, score: number, line: string, index: number}> = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Skip lines that are clearly not product names
+      if (pricePatterns.some(pattern => pattern.test(line)) || 
+          /^\d+[xX]\d+/.test(line) || 
+          /^\d+ml$/.test(line) ||
+          /^only$/i.test(line) ||
+          /^save$/i.test(line) ||
+          /^deposit$/i.test(line) ||
+          /^total price$/i.test(line) ||
+          /^per litre$/i.test(line) ||
+          /^€\d+[.,]\d+ per litre$/i.test(line) ||
+          /^\d+[.,]\d+$/.test(line) || // Just numbers
+          /^€\d+[.,]\d+$/.test(line) || // Just prices
+          /^\d+$/.test(line) || // Just digits
+          line.length < 3 || // Too short
+          line.length > 50) { // Too long
+        continue;
+      }
+      
+      // Score potential product names
+      let score = 0;
+      
+      // Specific product indicators (high score)
+      if (line.toLowerCase().includes('cola')) score += 15;
+      if (line.toLowerCase().includes('coca')) score += 15;
+      if (line.toLowerCase().includes('original')) score += 8;
+      if (line.toLowerCase().includes('coke')) score += 10;
+      
+      // Good product name characteristics
+      const words = line.split(' ').filter(word => word.length > 0);
+      if (words.length >= 2 && words.length <= 4) score += 5;
+      
+      // Has letters but not all caps
+      const hasLetters = /[a-zA-Z]/.test(line);
+      const notAllCaps = line !== line.toUpperCase();
+      const notAllNumbers = !/^\d+$/.test(line);
+      
+      if (hasLetters && notAllCaps && notAllNumbers) score += 3;
+      
+      // Bonus for mixed case (like "Coca Cola")
+      if (/[a-z]/.test(line) && /[A-Z]/.test(line)) score += 2;
+      
+      // Bonus for proper capitalization patterns
+      if (/^[A-Z][a-z]+/.test(line)) score += 1; // Starts with capital
+      
+      // Penalty for all caps
+      if (line === line.toUpperCase() && line.length > 5) score -= 3;
+      
+      // Penalty for lines with too many numbers
+      if ((line.match(/\d/g) || []).length > 2) score -= 5;
+      
+      // Bonus for being in the first few lines (product names are usually at the top)
+      if (i < 3) score += 2;
+      
+      if (score > 0) {
+        productCandidates.push({ name: line, score, line: line, index: i });
+      }
+    }
+    
+    // Sort candidates by score and select the best one
+    productCandidates.sort((a, b) => b.score - a.score);
+    console.log("Product candidates:", productCandidates);
+    
+    if (productCandidates.length > 0) {
+      productName = productCandidates[0].name;
+    } else {
+      // Fallback: look for any reasonable text that might be a product name
+      for (const line of lines) {
+        if (line.length > 3 && line.length < 30 && 
+            /[a-zA-Z]/.test(line) && 
+            !/^\d+/.test(line) && 
+            !pricePatterns.some(pattern => pattern.test(line))) {
+          productName = line;
+          break;
+        }
+      }
+      
+      if (!productName) {
+        productName = "Product";
+      }
+    }
+    
+    console.log("Final extracted:", { productName, price });
+    return { productName, price };
+  };
 
   const preprocessText = (text: string): string => {
     // Clean up common OCR errors
