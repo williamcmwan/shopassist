@@ -192,70 +192,220 @@ export class BinPackingAlgorithm {
     items: ShoppingItem[],
     groupSpecs: GroupSpec[]
   ): ShoppingGroup[] {
-    // Flatten group specs into an array of {targetAmount, groupIndex}
-    const groupTargets: { targetAmount: number; groupIndex: number }[] = [];
-    groupSpecs.forEach((spec, i) => {
-      for (let j = 0; j < spec.count; j++) {
-        groupTargets.push({ targetAmount: spec.targetAmount, groupIndex: groupTargets.length });
+    // Expand group specs into individual groups
+    const groups: ShoppingGroup[] = [];
+    let groupId = 1;
+    for (const spec of groupSpecs) {
+      for (let i = 0; i < spec.count; i++) {
+        groups.push({
+          id: `group-${groupId++}`,
+          number: groupId - 1,
+          items: [],
+          total: 0,
+          targetAmount: spec.targetAmount
+        });
       }
-    });
-    // Create groups
-    const groups: ShoppingGroup[] = groupTargets.map((g, i) => ({
-      id: `group-${i + 1}`,
-      number: i + 1,
-      targetAmount: g.targetAmount,
-      total: 0,
-      items: []
-    }));
-    // Create individual units from items with quantities > 1
-    const individualItems: BinPackingItem[] = [];
-    items.forEach(item => {
-      const unitPrice = item.price;
+    }
+
+    // Convert items to individual units
+    const individualItems: { item: ShoppingItem; value: number }[] = [];
+    for (const item of items) {
       for (let i = 0; i < item.quantity; i++) {
+        const unitPrice = item.total / item.quantity;
         individualItems.push({
-          id: `${item.id}-${i}`,
-          value: unitPrice,
           item: {
             ...item,
-            id: `${item.id}-${i}`,
+            id: `${item.id}-${i + 1}`,
             quantity: 1,
             total: unitPrice,
             originalQuantity: item.quantity,
             splitIndex: i + 1
-          }
+          },
+          value: unitPrice
         });
       }
-    });
-    // Sort items by value descending
-    let sortedItems = individualItems.sort((a, b) => b.value - a.value);
-    // Greedy fill: for each group, fill to at least its target (or as close as possible), then move to next group
-    for (let g = 0; g < groups.length; g++) {
-      const group = groups[g];
-      while (group.total < group.targetAmount && sortedItems.length > 0) {
-        // Find the largest item that fits without going over by more than 20%
-        let idx = sortedItems.findIndex(item => group.total + item.value <= group.targetAmount * 1.2);
-        if (idx === -1) idx = 0; // If nothing fits, take the largest remaining
-        const binItem = sortedItems.splice(idx, 1)[0];
-        group.items.push(binItem.item);
-        group.total = Number((group.total + binItem.value).toFixed(2));
+    }
+
+    // Sort groups by target amount (descending) and items by value (descending)
+    const sortedGroups = [...groups].sort((a, b) => b.targetAmount - a.targetAmount);
+    const sortedItems = [...individualItems].sort((a, b) => b.value - a.value);
+
+    // Phase 1: Greedy fill with target optimization
+    const remainingItems = [...sortedItems];
+    const filledGroups = sortedGroups.map(g => ({ ...g, items: [...g.items], total: g.total }));
+
+    // Fill each group optimally
+    for (let g = 0; g < filledGroups.length; g++) {
+      const group = filledGroups[g];
+      
+      // Try to fill the group to exactly its target or as close as possible
+      while (group.total < group.targetAmount && remainingItems.length > 0) {
+        // Find the best item to add (closest to target without going over, or smallest overfill)
+        let bestIdx = -1;
+        let bestScore = -Infinity;
+        
+        for (let i = 0; i < remainingItems.length; i++) {
+          const newTotal = group.total + remainingItems[i].value;
+          const distanceToTarget = Math.abs(newTotal - group.targetAmount);
+          const isOverTarget = newTotal > group.targetAmount;
+          
+          // Prefer items that get us closer to target, with slight preference for not going over
+          const score = -distanceToTarget - (isOverTarget ? 0.1 : 0);
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestIdx = i;
+          }
+        }
+        
+        if (bestIdx === -1) break;
+        
+        const selectedItem = remainingItems.splice(bestIdx, 1)[0];
+        group.items.push(selectedItem.item);
+        group.total = Number((group.total + selectedItem.value).toFixed(2));
       }
     }
-    // If any items remain, distribute to groups with the least overflow
-    while (sortedItems.length > 0) {
-      // Find group with least overflow (or least total if all under target)
-      let minOverflow = Infinity;
-      let minGroupIdx = 0;
-      for (let g = 0; g < groups.length; g++) {
-        const overflow = Math.max(0, groups[g].total - groups[g].targetAmount);
-        if (overflow < minOverflow) {
-          minOverflow = overflow;
-          minGroupIdx = g;
+
+    // Phase 2: Redistribute remaining items optimally
+    while (remainingItems.length > 0) {
+      // Find the group that would benefit most from an additional item
+      let bestGroupIdx = -1;
+      let bestImprovement = -Infinity;
+      
+      for (let g = 0; g < filledGroups.length; g++) {
+        const group = filledGroups[g];
+        const currentDistance = Math.abs(group.total - group.targetAmount);
+        
+        // Try each remaining item
+        for (let i = 0; i < remainingItems.length; i++) {
+          const newTotal = group.total + remainingItems[i].value;
+          const newDistance = Math.abs(newTotal - group.targetAmount);
+          const improvement = currentDistance - newDistance;
+          
+          if (improvement > bestImprovement) {
+            bestImprovement = improvement;
+            bestGroupIdx = g;
+          }
         }
       }
-      const binItem = sortedItems.shift()!;
-      groups[minGroupIdx].items.push(binItem.item);
-      groups[minGroupIdx].total = Number((groups[minGroupIdx].total + binItem.value).toFixed(2));
+      
+      if (bestGroupIdx === -1) break;
+      
+      // Add the best item to the best group
+      const bestItem = remainingItems.shift()!;
+      filledGroups[bestGroupIdx].items.push(bestItem.item);
+      filledGroups[bestGroupIdx].total = Number((filledGroups[bestGroupIdx].total + bestItem.value).toFixed(2));
     }
+
+    // Phase 3: Try to optimize by swapping items between groups
+    const optimizedGroups = this.optimizeBySwapping(filledGroups);
+    
+    return optimizedGroups;
+  }
+
+  private static optimizeBySwapping(groups: ShoppingGroup[]): ShoppingGroup[] {
+    let improved = true;
+    let iterations = 0;
+    const maxIterations = 50; // Prevent infinite loops
+    
+    while (improved && iterations < maxIterations) {
+      improved = false;
+      iterations++;
+      
+      // Try all possible swaps between groups
+      for (let i = 0; i < groups.length; i++) {
+        for (let j = i + 1; j < groups.length; j++) {
+          const groupA = groups[i];
+          const groupB = groups[j];
+          
+          // Calculate current distances to targets
+          const currentDistanceA = Math.abs(groupA.total - groupA.targetAmount);
+          const currentDistanceB = Math.abs(groupB.total - groupB.targetAmount);
+          const currentTotalDistance = currentDistanceA + currentDistanceB;
+          
+          // Try swapping each item from group A with each item from group B
+          for (let itemAIdx = 0; itemAIdx < groupA.items.length; itemAIdx++) {
+            for (let itemBIdx = 0; itemBIdx < groupB.items.length; itemBIdx++) {
+              const itemA = groupA.items[itemAIdx];
+              const itemB = groupB.items[itemBIdx];
+              
+              // Calculate new totals after swap
+              const newTotalA = groupA.total - itemA.total + itemB.total;
+              const newTotalB = groupB.total - itemB.total + itemA.total;
+              
+              // Calculate new distances to targets
+              const newDistanceA = Math.abs(newTotalA - groupA.targetAmount);
+              const newDistanceB = Math.abs(newTotalB - groupB.targetAmount);
+              const newTotalDistance = newDistanceA + newDistanceB;
+              
+              // If the swap improves the overall fit, perform it
+              if (newTotalDistance < currentTotalDistance) {
+                // Perform the swap
+                groupA.items[itemAIdx] = itemB;
+                groupB.items[itemBIdx] = itemA;
+                groupA.total = Number(newTotalA.toFixed(2));
+                groupB.total = Number(newTotalB.toFixed(2));
+                
+                improved = true;
+                break; // Move to next group pair
+              }
+            }
+            if (improved) break;
+          }
+        }
+      }
+    }
+    
     return groups;
   }
+}
+
+// Helper: Try to rearrange items between groups to meet all targets (limited-depth DFS)
+function tryRearrange(groups: ShoppingGroup[], allItems: ShoppingItem[], depth = 0, maxDepth = 1000, visited = new Set<string>()): ShoppingGroup[] | null {
+  if (depth > maxDepth) return null;
+  
+  // Create a hash of the current state to avoid revisiting
+  const stateHash = groups.map(g => `${g.total.toFixed(2)}:${g.items.map(i => i.id).sort().join(',')}`).join('|');
+  if (visited.has(stateHash)) return null;
+  visited.add(stateHash);
+  
+  // Check if all groups meet their targets
+  if (groups.every(g => g.total >= g.targetAmount)) {
+    return groups.map(g => ({ ...g, items: [...g.items] }));
+  }
+  
+  // Try swapping items between groups that are under target
+  const underTargetGroups = groups.map((g, i) => ({ group: g, index: i })).filter(({ group }) => group.total < group.targetAmount);
+  const overTargetGroups = groups.map((g, i) => ({ group: g, index: i })).filter(({ group }) => group.total > group.targetAmount);
+  
+  // Try swaps between under-target and over-target groups
+  for (const { group: underGroup, index: underIdx } of underTargetGroups) {
+    for (const { group: overGroup, index: overIdx } of overTargetGroups) {
+      for (let m = 0; m < underGroup.items.length; m++) {
+        for (let n = 0; n < overGroup.items.length; n++) {
+          // Create new groups with the swap
+          const newGroups = groups.map(g => ({ ...g, items: [...g.items], total: g.total }));
+          const itemA = newGroups[underIdx].items[m];
+          const itemB = newGroups[overIdx].items[n];
+          
+          // Only swap if it helps
+          const underNewTotal = newGroups[underIdx].total - itemA.total + itemB.total;
+          const overNewTotal = newGroups[overIdx].total - itemB.total + itemA.total;
+          
+          if (underNewTotal >= newGroups[underIdx].targetAmount && overNewTotal >= newGroups[overIdx].targetAmount) {
+            newGroups[underIdx].items[m] = itemB;
+            newGroups[overIdx].items[n] = itemA;
+            newGroups[underIdx].total = Number(underNewTotal.toFixed(2));
+            newGroups[overIdx].total = Number(overNewTotal.toFixed(2));
+            
+            // Recurse
+            const result = tryRearrange(newGroups, allItems, depth + 1, maxDepth, visited);
+            if (result) return result;
+          }
+        }
+      }
+    }
+  }
+  
+  return null;
 }
