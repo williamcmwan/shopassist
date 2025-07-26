@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Camera, Upload, X, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import OCRSpace from "ocr-space-api";
+import { createWorker } from "tesseract.js";
 
 interface PhotoCaptureProps {
   onExtractData: (productName: string, price: number) => void;
@@ -56,36 +56,25 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   const processImage = useCallback(async (imageData: string) => {
     setIsProcessing(true);
     try {
-      console.log("Processing image with OCR Space API...");
+      console.log("Processing image with Tesseract.js...");
       
-      // Convert base64 image to blob for OCR Space API
-      const base64Data = imageData.split(',')[1]; // Remove data:image/jpeg;base64, prefix
+      // Create a Tesseract worker
+      const worker = await createWorker();
       
-      // Use OCR Space API for text extraction
-      // Get your free API key from: https://ocr.space/ocrapi
-      const result = await OCRSpace(base64Data, {
-        apikey: 'K81634588988957', // Replace with your OCR Space API key
-        language: 'eng',
-        isOverlayRequired: false,
-        filetype: 'jpg',
-        detectOrientation: true,
-        scale: true,
-        OCREngine: 2 // Use advanced OCR engine
-      });
+      // Initialize the worker with English language
+      await worker.loadLanguage('eng');
+      await worker.initialize('eng');
       
-      console.log("OCR Space API result:", result);
+      // Recognize text from the image
+      const { data: { text } } = await worker.recognize(imageData);
+      console.log("Tesseract OCR result:", text);
       
-      if (result.IsErroredOnProcessing) {
-        console.error("OCR Space API error:", result.ErrorMessage);
-        throw new Error(result.ErrorMessage || "OCR processing failed");
-      }
+      // Terminate the worker
+      await worker.terminate();
       
-      const extractedText = result.ParsedResults?.[0]?.ParsedText || "";
-      console.log("Extracted text:", extractedText);
-      
-      if (extractedText.trim()) {
+      if (text.trim()) {
         // Parse the extracted text
-        const extracted = parseProductInfo(extractedText);
+        const extracted = parseProductInfo(text);
         console.log("Parsed product info:", extracted);
         
         if (extracted.productName || extracted.price > 0) {
