@@ -22,13 +22,13 @@ export default function ShoppingListPage() {
     price: 0,
     quantity: 1
   });
-  const [targetAmount, setTargetAmount] = useState<number>(25);
-  const [numberOfGroups, setNumberOfGroups] = useState<number>(2);
-  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  // Replace targetAmount and numberOfGroups state with groupSpecs array
+  const [groupSpecs, setGroupSpecs] = useState([{ targetAmount: 25, count: 2 }]);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ price: number; quantity: number }>({ price: 0, quantity: 1 });
   const [showSplitPanel, setShowSplitPanel] = useState<boolean>(false);
   const [editingGroupTarget, setEditingGroupTarget] = useState<string | null>(null);
+  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
 
   useEffect(() => {
     if (params?.id) {
@@ -112,6 +112,7 @@ export default function ShoppingListPage() {
     updateList(updatedList);
   };
 
+  // Update handleRunBinPacking to use groupSpecs and call the new bin-packing logic
   const handleRunBinPacking = () => {
     if (!currentList || currentList.items.length === 0) {
       toast({
@@ -121,34 +122,28 @@ export default function ShoppingListPage() {
       });
       return;
     }
-
-    if (numberOfGroups < 2 || numberOfGroups > 5) {
+    // Validate groupSpecs
+    if (groupSpecs.length === 0 || groupSpecs.some(spec => spec.count < 1 || spec.targetAmount <= 0)) {
       toast({
-        title: "Invalid number of groups",
-        description: "Number of groups must be between 2 and 5.",
+        title: "Invalid group specs",
+        description: "Please enter valid group totals and counts.",
         variant: "destructive"
       });
       return;
     }
-
-    const groups = BinPackingAlgorithm.optimize(
-      currentList.items,
-      targetAmount,
-      numberOfGroups
-    );
-
+    // Sort groupSpecs by targetAmount descending for better bin-packing
+    const sortedSpecs = [...groupSpecs].sort((a, b) => b.targetAmount - a.targetAmount);
+    const groups = BinPackingAlgorithm.optimizeMultiple(currentList.items, sortedSpecs);
     const updatedList = {
       ...currentList,
       groups,
       isSplitMode: true
     };
-
     updateList(updatedList);
     setShowSplitPanel(false);
-    
     toast({
       title: "List split successfully",
-      description: `Items have been distributed into ${numberOfGroups} groups.`
+      description: `Items have been distributed into ${groups.length} groups.`
     });
   };
 
@@ -168,60 +163,6 @@ export default function ShoppingListPage() {
 
     updateList(updatedList);
     setEditingGroupTarget(null);
-  };
-
-  const handleDragStart = (e: React.DragEvent, item: ShoppingItem) => {
-    e.dataTransfer.setData("text/plain", item.id);
-    e.dataTransfer.setData("application/json", JSON.stringify(item));
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX;
-    const y = e.clientY;
-    
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-      setDragOverGroup(null);
-    }
-  };
-
-  const handleGroupDragOver = (groupId: string) => {
-    setDragOverGroup(groupId);
-  };
-
-  const handleDropOnGroup = (groupId: string, droppedItem: ShoppingItem) => {
-    if (!currentList || !currentList.groups) return;
-
-    // Remove item from all groups first
-    const updatedGroups = currentList.groups.map(group => ({
-      ...group,
-      items: group.items.filter(item => item.id !== droppedItem.id),
-      total: Number(group.items
-        .filter(item => item.id !== droppedItem.id)
-        .reduce((sum, item) => sum + item.total, 0)
-        .toFixed(2))
-    }));
-
-    // Add item to target group
-    const targetGroupIndex = updatedGroups.findIndex(group => group.id === groupId);
-    if (targetGroupIndex >= 0) {
-      updatedGroups[targetGroupIndex].items.push(droppedItem);
-      updatedGroups[targetGroupIndex].total = Number(
-        (updatedGroups[targetGroupIndex].total + droppedItem.total).toFixed(2)
-      );
-    }
-
-    const updatedList = {
-      ...currentList,
-      groups: updatedGroups
-    };
-
-    updateList(updatedList);
-    setDragOverGroup(null);
   };
 
   const handleEditItem = (item: ShoppingItem) => {
@@ -285,6 +226,70 @@ export default function ShoppingListPage() {
   const scrollToAddForm = () => {
     document.querySelector('.add-item-form')?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handleDragStart = (e: React.DragEvent, item: ShoppingItem) => {
+    e.dataTransfer.setData("text/plain", item.id);
+    e.dataTransfer.setData("application/json", JSON.stringify(item));
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDragOverGroup(null);
+    }
+  };
+  const handleGroupDragOver = (groupId: string) => {
+    setDragOverGroup(groupId);
+  };
+  const handleDropOnGroup = (groupId: string, droppedItem: ShoppingItem) => {
+    if (!currentList || !currentList.groups) return;
+    // Remove item from all groups first
+    const updatedGroups = currentList.groups.map(group => ({
+      ...group,
+      items: group.items.filter(item => item.id !== droppedItem.id),
+      total: Number(group.items
+        .filter(item => item.id !== droppedItem.id)
+        .reduce((sum, item) => sum + item.total, 0)
+        .toFixed(2))
+    }));
+    // Add item to target group
+    const targetGroupIndex = updatedGroups.findIndex(group => group.id === groupId);
+    if (targetGroupIndex >= 0) {
+      updatedGroups[targetGroupIndex].items.push(droppedItem);
+      updatedGroups[targetGroupIndex].total = Number(
+        (updatedGroups[targetGroupIndex].total + droppedItem.total).toFixed(2)
+      );
+    }
+    const updatedList = {
+      ...currentList,
+      groups: updatedGroups
+    };
+    updateList(updatedList);
+    setDragOverGroup(null);
+  };
+
+  // Add a useEffect to load groupSpecs from localStorage when the list is opened
+  useEffect(() => {
+    if (currentList?.id) {
+      const savedSpecs = localStorage.getItem(`splitConfig-${currentList.id}`);
+      if (savedSpecs) {
+        try {
+          setGroupSpecs(JSON.parse(savedSpecs));
+        } catch {}
+      }
+    }
+    // eslint-disable-next-line
+  }, [currentList?.id]);
+  // Add a useEffect to save groupSpecs to localStorage whenever it changes
+  useEffect(() => {
+    if (currentList?.id) {
+      localStorage.setItem(`splitConfig-${currentList.id}`, JSON.stringify(groupSpecs));
+    }
+  }, [groupSpecs, currentList?.id]);
 
   if (!currentList) {
     return (
@@ -576,35 +581,68 @@ export default function ShoppingListPage() {
             </div>
             
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target Amount per Group (€)
-                </label>
-                <Input
-                  type="number"
-                  value={targetAmount}
-                  onChange={(e) => setTargetAmount(Number(e.target.value))}
-                  placeholder="25.00"
-                  step="0.01"
-                  className="w-full px-4 py-3 text-base"
-                />
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-32">
+                  <label className="block text-xs font-semibold text-gray-500">Target Amount (€)</label>
+                </div>
+                <div className="w-32">
+                  <label className="block text-xs font-semibold text-gray-500">Number of Groups</label>
+                </div>
+                <div className="w-8" />
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Number of Groups
-                </label>
-                <Input
-                  type="number"
-                  value={numberOfGroups}
-                  onChange={(e) => setNumberOfGroups(Number(e.target.value))}
-                  placeholder="2"
-                  min="2"
-                  max="5"
-                  className="w-full px-4 py-3 text-base"
-                />
-              </div>
-              
+              {groupSpecs.map((spec, index) => (
+                <div key={index} className="flex items-center gap-2 mb-2">
+                  <div className="w-32">
+                    <Input
+                      type="number"
+                      value={spec.targetAmount}
+                      onChange={(e) => {
+                        const newSpecs = [...groupSpecs];
+                        newSpecs[index] = { ...newSpecs[index], targetAmount: Number(e.target.value) };
+                        setGroupSpecs(newSpecs);
+                      }}
+                      placeholder="25.00"
+                      step="0.01"
+                      className="w-full px-4 py-2 text-base"
+                    />
+                  </div>
+                  <div className="w-32">
+                    <QuantityInput
+                      value={spec.count}
+                      onChange={(value) => {
+                        const newSpecs = [...groupSpecs];
+                        newSpecs[index] = { ...newSpecs[index], count: value };
+                        setGroupSpecs(newSpecs);
+                      }}
+                      min={1}
+                      className="w-full"
+                    />
+                  </div>
+                  {groupSpecs.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const newSpecs = groupSpecs.filter((_, i) => i !== index);
+                        setGroupSpecs(newSpecs);
+                      }}
+                      className="text-destructive hover:bg-red-50 p-2"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {index === groupSpecs.length - 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setGroupSpecs([...groupSpecs, { targetAmount: 25, count: 2 }])}
+                      className="text-primary hover:bg-blue-50 p-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
               <div className="flex gap-3 pt-2">
                 <Button 
                   variant="outline"

@@ -128,10 +128,7 @@ export function GroupContainer({
           isDragOver && "bg-blue-50 border-primary"
         )}
         onDrop={handleDrop}
-        onDragOver={(e) => {
-          e.preventDefault();
-          onDragOver(e);
-        }}
+        onDragOver={onDragOver}
         onDragLeave={onDragLeave}
       >
         {group.items.map((item) => (
