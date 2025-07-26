@@ -68,7 +68,7 @@ npm run build
 cd ..
 
 # Check if build was successful
-if [ ! -d "client/dist" ]; then
+if [ ! -d "dist/public" ]; then
     print_error "Client build failed. Check the build logs."
     exit 1
 fi
@@ -94,7 +94,7 @@ mkdir -p "$DEPLOY_DIR"
 
 # Copy necessary files
 print_status "Copying files to deployment directory..."
-cp -r client/dist "$DEPLOY_DIR/client"
+cp -r dist/public "$DEPLOY_DIR/client"
 cp -r server "$DEPLOY_DIR/"
 cp -r shared "$DEPLOY_DIR/"
 cp package.json "$DEPLOY_DIR/"
