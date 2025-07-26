@@ -21,6 +21,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState({ productName: "", price: 0 });
   const [cameraSupported, setCameraSupported] = useState<boolean | null>(null);
+  const [showManualEntry, setShowManualEntry] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,12 +48,11 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     try {
       // Check if we're on iOS
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      console.log("iOS detected:", isIOS);
       
-      // iOS Safari requires very basic constraints
+      // For iOS, use the most basic constraints possible
       const constraints = isIOS ? {
-        video: {
-          facingMode: "environment"
-        },
+        video: true,
         audio: false
       } : {
         video: {
@@ -69,15 +69,33 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       
+      console.log("Camera stream obtained:", stream);
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // Wait for video to be ready
-        videoRef.current.onloadedmetadata = () => {
-          console.log("Video metadata loaded, starting capture");
-          setIsCapturing(true);
-        };
         
-        // Also handle play event for iOS
+        // For iOS, we need to handle the video loading differently
+        if (isIOS) {
+          // iOS Safari needs explicit play() call
+          videoRef.current.onloadedmetadata = async () => {
+            console.log("Video metadata loaded on iOS");
+            try {
+              await videoRef.current!.play();
+              console.log("Video started playing on iOS");
+              setIsCapturing(true);
+            } catch (playError) {
+              console.error("Failed to play video on iOS:", playError);
+              // Try without play() for iOS
+              setIsCapturing(true);
+            }
+          };
+        } else {
+          videoRef.current.onloadedmetadata = () => {
+            console.log("Video metadata loaded, starting capture");
+            setIsCapturing(true);
+          };
+        }
+        
         videoRef.current.onplay = () => {
           console.log("Video started playing");
         };
@@ -85,36 +103,31 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
         videoRef.current.onerror = (e) => {
           console.error("Video error:", e);
         };
+        
+        videoRef.current.oncanplay = () => {
+          console.log("Video can play");
+        };
       }
     } catch (error) {
       console.error("Camera error:", error);
       
-      // For iOS, try even simpler constraints
-      try {
-        const simpleConstraints = {
-          video: true,
-          audio: false
-        };
-        
-        console.log("Trying simple constraints:", simpleConstraints);
-        
-        const stream = await navigator.mediaDevices.getUserMedia(simpleConstraints);
-        streamRef.current = stream;
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            setIsCapturing(true);
-          };
+      // Show specific error message
+      let errorMessage = "Please allow camera access in your browser settings and try again.";
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = "Camera access was denied. Please allow camera access and try again.";
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = "No camera found on this device.";
+        } else if (error.name === 'NotSupportedError') {
+          errorMessage = "Camera is not supported in this browser.";
         }
-      } catch (fallbackError) {
-        console.error("Fallback camera error:", fallbackError);
-        toast({
-          title: "Camera access denied",
-          description: "Please allow camera access in your browser settings and try again.",
-          variant: "destructive"
-        });
       }
+      
+      toast({
+        title: "Camera access denied",
+        description: errorMessage,
+        variant: "destructive"
+      });
     }
   }, [toast]);
 
@@ -188,9 +201,11 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
       console.error("OCR Error:", error);
       toast({
         title: "OCR failed",
-        description: "Could not extract text from the image. Please try again.",
+        description: "Could not extract text from the image. You can manually enter the details.",
         variant: "destructive"
       });
+      // Show manual entry option when OCR fails
+      setShowManualEntry(true);
     } finally {
       setIsProcessing(false);
     }
@@ -220,15 +235,18 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     
     console.log("OCR Lines:", lines); // Debug log
+    console.log("Full text:", text); // Debug full text
     
     let productName = "";
     let price = 0;
     
-    // Enhanced price detection patterns
+    // More comprehensive price detection patterns
     const pricePatterns = [
       /ONLY\s*€\s*(\d+[.,]\d{2})/g,  // ONLY €XX.XX (highest priority)
       /€\s*(\d+[.,]\d{2})/g,         // €XX.XX or €XX,XX
-      /(\d+[.,]\d{2})\s*€/g          // XX.XX€ (reverse format)
+      /(\d+[.,]\d{2})\s*€/g,         // XX.XX€ (reverse format)
+      /ONLY\s*(\d+[.,]\d{2})/g,      // ONLY XX.XX (without € symbol)
+      /(\d+[.,]\d{2})/g              // Any XX.XX format as fallback
     ];
     
     let allPriceMatches: Array<{price: number, line: string, index: number, pattern: string}> = [];
@@ -240,34 +258,53 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
         matches.forEach(match => {
           const priceStr = match[1].replace(',', '.');
           const priceValue = parseFloat(priceStr);
-          allPriceMatches.push({
-            price: priceValue,
-            line: line,
-            index: index,
-            pattern: patternIndex === 0 ? 'ONLY' : patternIndex === 1 ? 'EURO' : 'REVERSE'
-          });
+          
+          // Only add reasonable prices (between 0.01 and 1000)
+          if (priceValue > 0.01 && priceValue < 1000) {
+            allPriceMatches.push({
+              price: priceValue,
+              line: line,
+              index: index,
+              pattern: patternIndex === 0 ? 'ONLY_EURO' : 
+                      patternIndex === 1 ? 'EURO' : 
+                      patternIndex === 2 ? 'REVERSE' :
+                      patternIndex === 3 ? 'ONLY' : 'GENERAL'
+            });
+          }
         });
       });
     });
     
     console.log("All price matches:", allPriceMatches); // Debug log
     
-    // Smart price selection
+    // Smart price selection with better logic
     if (allPriceMatches.length > 0) {
       // Prioritize "ONLY" prices as they're usually the current price
-      const onlyPrice = allPriceMatches.find(match => match.pattern === 'ONLY');
+      const onlyPrice = allPriceMatches.find(match => 
+        match.pattern === 'ONLY_EURO' || match.pattern === 'ONLY'
+      );
+      
       if (onlyPrice) {
         price = onlyPrice.price;
         console.log("Selected ONLY price:", onlyPrice);
       } else {
-        // Take the first price if no "ONLY" found
-        price = allPriceMatches[0].price;
-        console.log("Selected first price:", allPriceMatches[0]);
+        // Look for the most likely current price (usually the largest reasonable price)
+        const sortedPrices = allPriceMatches
+          .filter(match => match.price > 1) // Filter out very small prices
+          .sort((a, b) => b.price - a.price);
+        
+        if (sortedPrices.length > 0) {
+          price = sortedPrices[0].price;
+          console.log("Selected highest price:", sortedPrices[0]);
+        } else {
+          price = allPriceMatches[0].price;
+          console.log("Selected first price:", allPriceMatches[0]);
+        }
       }
     }
     
-    // Enhanced product name detection
-    const productCandidates: Array<{name: string, score: number, line: string}> = [];
+    // Enhanced product name detection with better logic
+    const productCandidates: Array<{name: string, score: number, line: string, index: number}> = [];
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -283,39 +320,50 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
           /^per litre$/i.test(line) ||
           /^€\d+[.,]\d+ per litre$/i.test(line) ||
           /^\d+[.,]\d+$/.test(line) || // Just numbers
-          /^€\d+[.,]\d+$/.test(line)) { // Just prices
+          /^€\d+[.,]\d+$/.test(line) || // Just prices
+          /^\d+$/.test(line) || // Just digits
+          line.length < 3 || // Too short
+          line.length > 50) { // Too long
         continue;
       }
       
       // Score potential product names
-      if (line.length > 3 && line.length < 50 && !/^\d+/.test(line)) {
-        let score = 0;
-        
-        // Specific product indicators (high score)
-        if (line.toLowerCase().includes('cola')) score += 10;
-        if (line.toLowerCase().includes('coca')) score += 10;
-        if (line.toLowerCase().includes('original')) score += 5;
-        
-        // Good product name characteristics
-        const words = line.split(' ').filter(word => word.length > 0);
-        if (words.length >= 2 && words.length <= 4) score += 3;
-        
-        // Has letters but not all caps
-        const hasLetters = /[a-zA-Z]/.test(line);
-        const notAllCaps = line !== line.toUpperCase();
-        const notAllNumbers = !/^\d+$/.test(line);
-        
-        if (hasLetters && notAllCaps && notAllNumbers) score += 2;
-        
-        // Bonus for mixed case (like "Coca Cola")
-        if (/[a-z]/.test(line) && /[A-Z]/.test(line)) score += 1;
-        
-        // Penalty for all caps
-        if (line === line.toUpperCase() && line.length > 5) score -= 2;
-        
-        if (score > 0) {
-          productCandidates.push({ name: line, score, line: line });
-        }
+      let score = 0;
+      
+      // Specific product indicators (high score)
+      if (line.toLowerCase().includes('cola')) score += 15;
+      if (line.toLowerCase().includes('coca')) score += 15;
+      if (line.toLowerCase().includes('original')) score += 8;
+      if (line.toLowerCase().includes('coke')) score += 10;
+      
+      // Good product name characteristics
+      const words = line.split(' ').filter(word => word.length > 0);
+      if (words.length >= 2 && words.length <= 4) score += 5;
+      
+      // Has letters but not all caps
+      const hasLetters = /[a-zA-Z]/.test(line);
+      const notAllCaps = line !== line.toUpperCase();
+      const notAllNumbers = !/^\d+$/.test(line);
+      
+      if (hasLetters && notAllCaps && notAllNumbers) score += 3;
+      
+      // Bonus for mixed case (like "Coca Cola")
+      if (/[a-z]/.test(line) && /[A-Z]/.test(line)) score += 2;
+      
+      // Bonus for proper capitalization patterns
+      if (/^[A-Z][a-z]+/.test(line)) score += 1; // Starts with capital
+      
+      // Penalty for all caps
+      if (line === line.toUpperCase() && line.length > 5) score -= 3;
+      
+      // Penalty for lines with too many numbers
+      if ((line.match(/\d/g) || []).length > 2) score -= 5;
+      
+      // Bonus for being in the first few lines (product names are usually at the top)
+      if (i < 3) score += 2;
+      
+      if (score > 0) {
+        productCandidates.push({ name: line, score, line: line, index: i });
       }
     }
     
@@ -326,7 +374,20 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     if (productCandidates.length > 0) {
       productName = productCandidates[0].name;
     } else {
-      productName = "Product";
+      // Fallback: look for any reasonable text that might be a product name
+      for (const line of lines) {
+        if (line.length > 3 && line.length < 30 && 
+            /[a-zA-Z]/.test(line) && 
+            !/^\d+/.test(line) && 
+            !pricePatterns.some(pattern => pattern.test(line))) {
+          productName = line;
+          break;
+        }
+      }
+      
+      if (!productName) {
+        productName = "Product";
+      }
     }
     
     console.log("Final extracted:", { productName, price }); // Debug log
@@ -350,6 +411,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
     setCapturedImage(null);
     setExtractedData(null);
     setIsEditing(false);
+    setShowManualEntry(false);
     setEditedData({ productName: "", price: 0 });
   };
 
@@ -398,6 +460,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
                 {cameraSupported === false && (
                   <p className="text-red-500 mt-2">⚠️ Camera not supported in this browser</p>
                 )}
+                <p className="mt-2">📝 You can also manually enter product details if OCR fails</p>
               </div>
               
               <input
@@ -439,7 +502,7 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
             </div>
           )}
           
-          {capturedImage && !isEditing && (
+          {capturedImage && !isEditing && !showManualEntry && (
             <div className="space-y-4">
               <div className="text-center">
                 <img 
@@ -456,10 +519,68 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
                 </div>
               )}
               
-              <Button onClick={handleRetake} variant="outline" className="w-full">
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Retake Photo
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleRetake} variant="outline" className="flex-1">
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Retake Photo
+                </Button>
+                <Button 
+                  onClick={() => setShowManualEntry(true)} 
+                  variant="outline" 
+                  className="flex-1"
+                >
+                  Manual Entry
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {showManualEntry && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <img 
+                  src={capturedImage!} 
+                  alt="Captured price tag" 
+                  className="max-w-full rounded-lg mb-4"
+                />
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product Name
+                  </label>
+                  <Input
+                    value={editedData.productName}
+                    onChange={(e) => setEditedData(prev => ({ ...prev, productName: e.target.value }))}
+                    placeholder="e.g., Coca Cola Original"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price (€)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editedData.price}
+                    onChange={(e) => setEditedData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <Button onClick={handleSave} className="flex-1">
+                  Add to List
+                </Button>
+                <Button onClick={handleRetake} variant="outline">
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Retake
+                </Button>
+              </div>
             </div>
           )}
           
