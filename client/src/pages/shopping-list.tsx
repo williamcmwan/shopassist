@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { ShoppingItemComponent } from "@/components/shopping-item";
 import { GroupContainer } from "@/components/group-container";
 import { QuantityInput } from "@/components/quantity-input";
-import { ArrowLeft, Plus, Edit2, Check, X } from "lucide-react";
+import { PhotoCapture } from "@/components/photo-capture";
+import { ArrowLeft, Plus, Edit2, Check, X, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ShoppingListPage() {
@@ -29,6 +30,7 @@ export default function ShoppingListPage() {
   const [showSplitPanel, setShowSplitPanel] = useState<boolean>(false);
   const [editingGroupTarget, setEditingGroupTarget] = useState<string | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  const [showPhotoCapture, setShowPhotoCapture] = useState<boolean>(false);
 
   useEffect(() => {
     if (params?.id) {
@@ -272,6 +274,19 @@ export default function ShoppingListPage() {
     setDragOverGroup(null);
   };
 
+  const handlePhotoExtractData = (productName: string, price: number) => {
+    setNewItem({
+      name: productName,
+      price: price,
+      quantity: 1
+    });
+    
+    toast({
+      title: "Product information extracted",
+      description: `Added "${productName}" with price €${price.toFixed(2)}`,
+    });
+  };
+
   // Add a useEffect to load groupSpecs from localStorage when the list is opened
   useEffect(() => {
     if (currentList?.id) {
@@ -347,13 +362,23 @@ export default function ShoppingListPage() {
       {/* Add Item Form */}
       <div className="add-item-form bg-white border-b border-gray-200 p-4">
         <div className="space-y-3">
-          <Input
-            type="text"
-            value={newItem.name}
-            onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
-            placeholder="Item name"
-            className="w-full px-4 py-3 text-base"
-          />
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              value={newItem.name}
+              onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="Item name"
+              className="flex-1 px-4 py-3 text-base"
+            />
+            <Button 
+              onClick={() => setShowPhotoCapture(true)}
+              variant="outline"
+              className="px-4 py-3 flex items-center justify-center min-w-[44px]"
+              title="Capture price tag with camera"
+            >
+              <Camera className="h-5 w-5" />
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Input
               type="number"
@@ -672,6 +697,14 @@ export default function ShoppingListPage() {
         >
           <Plus className="h-5 w-5" />
         </Button>
+      )}
+
+      {/* Photo Capture Modal */}
+      {showPhotoCapture && (
+        <PhotoCapture
+          onExtractData={handlePhotoExtractData}
+          onClose={() => setShowPhotoCapture(false)}
+        />
       )}
     </div>
   );
