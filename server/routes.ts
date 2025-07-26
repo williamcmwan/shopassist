@@ -33,8 +33,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let width = originalInfo.width;
       let height = originalInfo.height;
 
-      // Try to get under 1MB while maintaining quality
-      while (resizedBuffer.length > 900000 && quality > 30) { // 900KB limit to be safe
+      // Try to get under 800KB while maintaining quality
+      while (resizedBuffer.length > 800000 && quality > 30) { // 800KB limit for OCR Space
         console.log(`Resizing image: ${width}x${height}, quality: ${quality}, size: ${resizedBuffer.length} bytes`);
         
         // Reduce dimensions by 20% each iteration
@@ -69,6 +69,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dataUrl = `data:image/jpeg;base64,${resizedBase64}`;
       
       console.log(`Final image size: ${resizedBuffer.length} bytes (${(resizedBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+      
+      if (resizedBuffer.length > 1000000) {
+        console.warn('Warning: Image still exceeds 1MB limit after resizing');
+      }
       
       return dataUrl;
     } catch (error) {
