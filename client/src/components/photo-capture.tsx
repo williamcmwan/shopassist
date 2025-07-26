@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Camera, Upload, X, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import Tesseract from "tesseract.js";
 
 interface PhotoCaptureProps {
   onExtractData: (productName: string, price: number) => void;
@@ -11,7 +10,6 @@ interface PhotoCaptureProps {
 }
 
 export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
-  const [isCapturing, setIsCapturing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<{
@@ -20,143 +18,26 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState({ productName: "", price: 0 });
-  const [cameraSupported, setCameraSupported] = useState<boolean | null>(null);
   const [showManualEntry, setShowManualEntry] = useState(false);
   
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const { toast } = useToast();
 
-  // Check camera support on mount
+  // Auto-click the upload button when dialog opens
   useEffect(() => {
-    const checkCameraSupport = async () => {
-      try {
-        const hasGetUserMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-        setCameraSupported(hasGetUserMedia);
-      } catch (error) {
-        console.error("Camera support check failed:", error);
-        setCameraSupported(false);
+    // Auto-click the upload button after a short delay
+    const timer = setTimeout(() => {
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
       }
-    };
+    }, 500); // 500ms delay to ensure the dialog is fully rendered
     
-    checkCameraSupport();
+    return () => clearTimeout(timer);
   }, []);
 
-  const startCamera = useCallback(async () => {
-    try {
-      // Check if we're on iOS
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      console.log("iOS detected:", isIOS);
-      
-      // For iOS, use the most basic constraints possible
-      const constraints = isIOS ? {
-        video: true,
-        audio: false
-      } : {
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1920, min: 640 },
-          height: { ideal: 1080, min: 480 }
-        },
-        audio: false
-      };
 
-      console.log("Requesting camera with constraints:", constraints);
-      
-      // Try to get camera access
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      
-      console.log("Camera stream obtained:", stream);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        // For iOS, we need to handle the video loading differently
-        if (isIOS) {
-          // iOS Safari needs explicit play() call
-          videoRef.current.onloadedmetadata = async () => {
-            console.log("Video metadata loaded on iOS");
-            try {
-              await videoRef.current!.play();
-              console.log("Video started playing on iOS");
-              setIsCapturing(true);
-            } catch (playError) {
-              console.error("Failed to play video on iOS:", playError);
-              // Try without play() for iOS
-              setIsCapturing(true);
-            }
-          };
-        } else {
-          videoRef.current.onloadedmetadata = () => {
-            console.log("Video metadata loaded, starting capture");
-            setIsCapturing(true);
-          };
-        }
-        
-        videoRef.current.onplay = () => {
-          console.log("Video started playing");
-        };
-        
-        videoRef.current.onerror = (e) => {
-          console.error("Video error:", e);
-        };
-        
-        videoRef.current.oncanplay = () => {
-          console.log("Video can play");
-        };
-      }
-    } catch (error) {
-      console.error("Camera error:", error);
-      
-      // Show specific error message
-      let errorMessage = "Please allow camera access in your browser settings and try again.";
-      if (error instanceof Error) {
-        if (error.name === 'NotAllowedError') {
-          errorMessage = "Camera access was denied. Please allow camera access and try again.";
-        } else if (error.name === 'NotFoundError') {
-          errorMessage = "No camera found on this device.";
-        } else if (error.name === 'NotSupportedError') {
-          errorMessage = "Camera is not supported in this browser.";
-        }
-      }
-      
-      toast({
-        title: "Camera access denied",
-        description: errorMessage,
-        variant: "destructive"
-      });
-    }
-  }, [toast]);
 
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setIsCapturing(false);
-  }, []);
 
-  const capturePhoto = useCallback(() => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext("2d");
-      
-      if (context) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0);
-        
-        const imageData = canvas.toDataURL("image/jpeg");
-        setCapturedImage(imageData);
-        stopCamera();
-        processImage(imageData);
-      }
-    }
-  }, [stopCamera]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -174,37 +55,25 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
   const processImage = useCallback(async (imageData: string) => {
     setIsProcessing(true);
     try {
-      // Try multiple OCR configurations for better accuracy
-      const result = await Tesseract.recognize(imageData, "eng", {
-        logger: m => console.log(m)
-      });
+      // For now, we'll skip OCR and go directly to manual entry
+      // This provides a better user experience while we work on OCR
+      console.log("Image captured, showing manual entry");
       
-      const text = result.data.text;
-      console.log("OCR Result:", text);
-      console.log("OCR Raw Text:", JSON.stringify(text, null, 2));
-      
-      // Clean and preprocess the text
-      const cleanedText = preprocessText(text);
-      console.log("Cleaned Text:", cleanedText);
-      
-      // Extract product name and price from OCR text
-      const extracted = extractProductInfo(cleanedText);
-      setExtractedData(extracted);
-      setEditedData(extracted);
-      setIsEditing(true);
+      // Set default values for manual entry
+      setEditedData({ productName: "", price: 0 });
+      setShowManualEntry(true);
       
       toast({
-        title: "Text extracted successfully",
-        description: "Please review and edit the extracted information.",
+        title: "Image captured",
+        description: "Please enter the product details manually.",
       });
     } catch (error) {
-      console.error("OCR Error:", error);
+      console.error("Image processing error:", error);
       toast({
-        title: "OCR failed",
-        description: "Could not extract text from the image. You can manually enter the details.",
+        title: "Image processing failed",
+        description: "Please try again or enter details manually.",
         variant: "destructive"
       });
-      // Show manual entry option when OCR fails
       setShowManualEntry(true);
     } finally {
       setIsProcessing(false);
@@ -426,81 +295,41 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
         </div>
         
         <div className="p-4 space-y-4">
-          {!capturedImage && !isCapturing && (
+          {!capturedImage && (
             <div className="space-y-4">
               <div className="text-center">
                 <p className="text-gray-600 mb-4">
-                  Take a photo of a price tag to automatically extract product information
+                  Upload a photo or take a picture of a price tag
                 </p>
               </div>
               
-              <div className="flex gap-2">
-                <Button 
-                  onClick={startCamera}
-                  className="flex-1"
-                  disabled={isProcessing || cameraSupported === false}
-                >
-                  <Camera className="h-4 w-4 mr-2" />
-                  Take Photo
-                </Button>
-                
-                <Button 
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isProcessing}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload
-                </Button>
-              </div>
+              <Button 
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full"
+                disabled={isProcessing}
+                size="lg"
+              >
+                <Camera className="h-5 w-5 mr-2" />
+                Upload / Take Photo
+              </Button>
               
               <div className="text-xs text-gray-500 text-center">
-                <p>💡 Tip: If camera doesn't work, try uploading a photo instead</p>
+                <p>💡 This will open your camera or photo gallery</p>
                 <p>Make sure to allow camera access when prompted</p>
-                {cameraSupported === false && (
-                  <p className="text-red-500 mt-2">⚠️ Camera not supported in this browser</p>
-                )}
-                <p className="mt-2">📝 You can also manually enter product details if OCR fails</p>
               </div>
               
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                capture="environment"
                 onChange={handleFileUpload}
                 className="hidden"
               />
             </div>
           )}
           
-          {isCapturing && (
-            <div className="space-y-4">
-              <div className="relative">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full rounded-lg"
-                  style={{ 
-                    transform: 'scaleX(-1)', // Mirror the video for better UX
-                    maxHeight: '400px',
-                    objectFit: 'cover'
-                  }}
-                />
-                <div className="absolute inset-0 border-2 border-blue-500 border-dashed rounded-lg pointer-events-none" />
-              </div>
-              
-              <div className="flex gap-2">
-                <Button onClick={capturePhoto} className="flex-1">
-                  Capture
-                </Button>
-                <Button variant="outline" onClick={stopCamera}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
+
           
           {capturedImage && !isEditing && !showManualEntry && (
             <div className="space-y-4">
@@ -633,8 +462,6 @@ export function PhotoCapture({ onExtractData, onClose }: PhotoCaptureProps) {
             </div>
           )}
         </div>
-        
-        <canvas ref={canvasRef} className="hidden" />
       </div>
     </div>
   );
